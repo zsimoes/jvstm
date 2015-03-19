@@ -284,10 +284,10 @@ public class ActiveTransactionsRecord {
     static{
         Logger logger = Logger.getLogger("jvstm");
         REVERSION = Boolean.getBoolean(REVERSION_PROP);
-        logger.info(String.format(
+        /*logger.info(String.format(
                 "********** AOM reversion = %b (disable/enable it in property %s)",
                 REVERSION,
-                REVERSION_PROP));
+                REVERSION_PROP));*/
     }
 
     /**

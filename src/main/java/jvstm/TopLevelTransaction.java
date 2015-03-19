@@ -62,12 +62,14 @@ public class TopLevelTransaction extends ReadWriteTransaction {
     protected Transaction commitAndBeginTx(boolean readOnly) {
         context().inCommitAndBegin = true;
         try {
+        	//tuning: super.commitTx deals with statistics
             commitTx(true);
         } finally {
             context().inCommitAndBegin = false;
         }
         // at this point activeTxRecord and commitTxRecord are the same...
         return Transaction.beginWithActiveRecord(readOnly, this.activeTxRecord);
+        //tuning: Transaction.beginWithActiveRecord deals with statistics
     }
 
     @Override
@@ -300,4 +302,9 @@ public class TopLevelTransaction extends ReadWriteTransaction {
             Transaction.setMostRecentCommittedRecord(recordToCommit);
         }
     }
+
+	@Override
+	public boolean isNested() {
+		return false;
+	}
 }

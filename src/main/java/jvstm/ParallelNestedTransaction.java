@@ -100,6 +100,7 @@ public class ParallelNestedTransaction extends ReadWriteTransaction {
 
     @Override
     protected Transaction commitAndBeginTx(boolean readOnly) {
+    	//tuning: super.commitTx() and super.beginWithActiveRecord() deal with statistics
         commitTx(true);
         return beginWithActiveRecord(readOnly, null);
     }
@@ -137,7 +138,11 @@ public class ParallelNestedTransaction extends ReadWriteTransaction {
         if (this.orec.version != OwnershipRecord.ABORTED) {
             manualAbort();
         }
+
+        //tuning: statistics
+        threadStatistics.get().incAbortCount();
         Transaction.current.set(parent);
+        releaseTopLevelTransactionPermit();
     }
 
     /* Removes the inplace writes of the transaction aborting if they 
@@ -544,4 +549,9 @@ public class ParallelNestedTransaction extends ReadWriteTransaction {
 
         return parentArrayReads;
     }
+
+	@Override
+	public boolean isNested() {
+		return true;
+	}
 }

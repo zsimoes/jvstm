@@ -62,6 +62,7 @@ public class InevitableTransaction extends TopLevelTransaction {
         // This is also required to allow setBoxValue to immediately write to
         // the vbox.body
         setNumber(getCommitTxRecord().transactionNumber);
+        //tuning: super.start() deals with statistics
         super.start();
     }
 
@@ -90,6 +91,7 @@ public class InevitableTransaction extends TopLevelTransaction {
     @Override
     public void abortTx() {
         commitTx(true);
+        //tuning: super.commitTx() deals with statistics
         //throw new Error("An Inevitable transaction cannot abort.  I've committed it instead.");
     }
 

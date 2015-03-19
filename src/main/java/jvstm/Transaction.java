@@ -32,11 +32,17 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
 
 import jvstm.gc.GCTask;
 import jvstm.gc.TxContext;
+import jvstm.tuning.AbortingThreadPool;
+import jvstm.tuning.Controller;
+import jvstm.tuning.ThreadStatistics;
 
 public abstract class Transaction {
     // static part starts here
@@ -63,10 +69,75 @@ public abstract class Transaction {
      * guarantees, even if we remove all the remaining volatile
      * declarations from the VBox and VBoxBody classes.
      */
+
+	/* /// tuning impl */
+    // note: I had to move this code up here because the original Transaction's static initializers caused trouble.
+    //		 The static call to ActiveTransactionsRecord.makeSentinelRecord() caused a loop which called Transaction's 
+    //		 static initializer again before these were initialized, which broke either the GCTask or the nestedParPoll.
+    
+	static final String TP_PROP = "jvstm.tp.forceabort";
+	
+    // tuning impl: a per thread statistic
+    protected static final ThreadLocal<ThreadStatistics> threadStatistics = new ThreadLocal<ThreadStatistics>() {
+    	@Override
+    	protected ThreadStatistics initialValue() { 
+    		return new ThreadStatistics(Thread.currentThread().getId(), 0);
+    	}
+    };
+    
+    protected static final ThreadLocal<Boolean> statisticsRegistered = new ThreadLocal<Boolean>() {
+    	@Override
+    	protected Boolean initialValue() {
+    		return new Boolean(false);
+    	}
+    };
+    
+	static {
+		boolean useAbortingThreadPool = Boolean.getBoolean(TP_PROP);
+		
+		useAbortingThreadPool = true;
+
+		/*
+		 * logger.info(String.format(
+		 * "********** Force aborting ThreadPool = %b (disable/enable it in property %s)"
+		 * , !useAbortingThreadPool, TP_PROP));
+		 */
+		if (useAbortingThreadPool) {
+			// use aborting thread pool
+			nestedParPool = AbortingThreadPool.newAbortingThreadPool(Runtime
+					.getRuntime().availableProcessors() * 2,
+					new ThreadFactory() {
+						@Override
+						public Thread newThread(Runnable r) {
+							Thread t = new Thread(r);
+							t.setDaemon(true);
+							return t;
+						}
+					});
+		} else {
+			// use default fixed thread pool
+			nestedParPool = Executors.newFixedThreadPool(Runtime.getRuntime()
+					.availableProcessors() * 2, new ThreadFactory() {
+				@Override
+				public Thread newThread(Runnable r) {
+					Thread t = new Thread(r);
+					t.setDaemon(true);
+					return t;
+				}
+			});
+		}
+
+		// start the tuning controller thread
+		if (!Controller.isRunning()) {
+			Controller.startThread();
+		}
+	}
+	/* /// tuning impl */
+	
     public static volatile ActiveTransactionsRecord mostRecentCommittedRecord = ActiveTransactionsRecord.makeSentinelRecord();
 
     protected static final ThreadLocal<Transaction> current = new ThreadLocal<Transaction>();
-
+    
     // a per thread TxContext
     private static final ThreadLocal<TxContext> threadTxContext = new ThreadLocal<TxContext>() {
         @Override protected TxContext initialValue() {
@@ -78,6 +149,27 @@ public abstract class Transaction {
     public static TxContext allTxContexts = null;
     public static final GCTask gcTask; // added by FMC for unit test purpose
     static final String GC_PROP = "jvstm.gc.disabled";
+    
+    protected static ExecutorService nestedParPool;
+    
+    public static void setThreadPoolSize(int size) {
+    	((ThreadPoolExecutor)nestedParPool).setCorePoolSize(size);
+    }
+    
+    public static int getThreadPoolSize() {
+    	return ((ThreadPoolExecutor)nestedParPool).getCorePoolSize();
+    }
+    
+    protected void acquireTopLevelTransactionPermit() {
+    	if(!this.isNested()) {
+    		Controller.instance().acquireTopLevelTransactionPermit();
+    	}
+    }
+    protected void releaseTopLevelTransactionPermit() {
+    	if(!this.isNested()) {
+    		Controller.instance().releaseTopLevelTransactionPermit();
+    	}
+    }
 
     static {
         // initialize the allTxContexts
@@ -86,17 +178,17 @@ public abstract class Transaction {
         // start the GC thread.
         boolean gcDisabled = Boolean.getBoolean(GC_PROP);
         Logger logger = Logger.getLogger("jvstm");
-        logger.info(String.format(
+        /*logger.info(String.format(
                 "********** GC vbodies = %b (disable/enable it in property %s)",
                 !gcDisabled,
-                GC_PROP));
+                GC_PROP));*/
         gcTask = new GCTask(mostRecentCommittedRecord);
         if(!gcDisabled){
             Thread gc = new Thread(gcTask);
             gc.setDaemon(true);
             gc.start();
         }
-    }
+	}
 
     private static TransactionFactory TRANSACTION_FACTORY = new DefaultTransactionFactory();
 
@@ -170,6 +262,7 @@ public abstract class Transaction {
         ActiveTransactionsRecord activeRecord = getRecordForNewTransaction();
         Transaction tx = new InevitableTransaction(activeRecord);
         tx.start();
+        //tuning impl: statistics delegated to start()
         return tx;
     }
 
@@ -184,6 +277,7 @@ public abstract class Transaction {
         if (TRANSACTION_FACTORY.reuseTopLevelReadOnlyTransactions() && parent == null && readOnly) {
             Transaction tx = getRecordForNewTransaction().tx;
             tx.start();
+            //tuning impl: statistics delegated to start()
             return tx;
         }
 
@@ -191,6 +285,7 @@ public abstract class Transaction {
             activeRecord = getRecordForNewTransaction();
         }
 
+        //tuning impl: statistics delegated to beginWithActiveRecord()
         return beginWithActiveRecord(readOnly, activeRecord);
     }
 
@@ -213,7 +308,7 @@ public abstract class Transaction {
             tx = parent.makeNestedTransaction(readOnly);
         }
         tx.start();
-
+        //tuning impl: statistics delegated to start()
         return tx;
     }
 
@@ -224,12 +319,14 @@ public abstract class Transaction {
      */
     public static Transaction commitAndBegin(boolean readOnly) {
         Transaction tx = current.get();
+        //tuning: statistics delegated to commitAndBegin(), which in turn delegates to commitTx() and beginWithActiveRecord()
         return tx.commitAndBeginTx(readOnly);
     }
 
     public static Transaction beginParallelNested(boolean readOnly) {
         Transaction parent = current.get();
         Transaction tx = parent.makeParallelNestedTransaction(readOnly);
+        //tuning impl: statistics delegated to start()
         tx.start();
         return tx;
     }
@@ -238,9 +335,11 @@ public abstract class Transaction {
         Transaction parent = current.get();
         Transaction tx = parent.makeUnsafeMultithreaded();
         tx.start();
+        //tuning impl: statistics delegated to start()
         return tx;
     }
 
+    //TUNING --- replace with abortingThreadPool
     public static void initThreadPool(int numberThreads) {
         nestedParPool = Executors.newFixedThreadPool(numberThreads, new ThreadFactory() {
             @Override
@@ -252,6 +351,7 @@ public abstract class Transaction {
         });
     }
 
+    //TUNING --- replace with abortingThreadPool
     public static void initCachedThreadPool() {
         nestedParPool = Executors.newCachedThreadPool(new ThreadFactory() {
             @Override
@@ -262,17 +362,6 @@ public abstract class Transaction {
             }
         });
     }
-
-    protected static ExecutorService nestedParPool = Executors.newFixedThreadPool(Runtime.getRuntime()
-            .availableProcessors() * 2, new ThreadFactory() {
-        @Override
-        public Thread newThread(Runnable r) {
-            Thread t = new Thread(r);
-            t.setDaemon(true);
-            return t;
-        }
-    });
-
     public <E> List<E> manageNestedParallelTxs(List<? extends TransactionalTask<E>> callables) {
         return manageNestedParallelTxs(callables, nestedParPool);
     }
@@ -355,16 +444,20 @@ public abstract class Transaction {
     public static void abort() {
         Transaction tx = current.get();
         tx.abortTx();
+        //tuning impl: statistics delegated to abortTx()
+        tx.releaseTopLevelTransactionPermit();
     }
 
     public static void commit() {
         Transaction tx = current.get();
         tx.commitTx(true);
+      //tuning impl: statistics delegated to commitTX()
     }
 
     public static void checkpoint() {
         Transaction tx = current.get();
         tx.commitTx(false);
+      //tuning impl: statistics delegated to commitTx()
     }
 
     public static SuspendedTransaction suspend() {
@@ -424,6 +517,12 @@ public abstract class Transaction {
     public Transaction(Transaction parent, int number) {
         this.parent = parent;
         this.number = number;
+        //register statistics (once per thread):
+        if(!statisticsRegistered.get()) {
+        	Controller.instance().register(threadStatistics.get(), this.isNested());
+        	statisticsRegistered.set(true);
+        	//tuning to-do: deal with nested txs
+    	}
     }
 
     public Transaction(int number) {
@@ -435,6 +534,9 @@ public abstract class Transaction {
     }
 
     public void start() {
+    	//tuning: statistics
+    	acquireTopLevelTransactionPermit();
+    	threadStatistics.get().incTransactionCount();
         current.set(this);
     }
 
@@ -451,12 +553,17 @@ public abstract class Transaction {
     }
 
     public void abortTx() {
+    	//tuning impl: statistics
+    	threadStatistics.get().incAbortCount();
         finishTx();
     }
 
     public void commitTx(boolean finishAlso) {
         doCommit();
 
+        //tuning impl: statistics
+        releaseTopLevelTransactionPermit();
+        threadStatistics.get().incCommitCount();
         if (finishAlso) {
             finishTx();
         }
@@ -514,6 +621,8 @@ public abstract class Transaction {
     public abstract Transaction makeParallelNestedTransaction(boolean readOnly);
 
     public abstract boolean isWriteTransaction();
+    
+    public abstract boolean isNested();
 
     public static void transactionallyDo(TransactionalCommand command) {
         while (true) {

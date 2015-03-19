@@ -36,6 +36,7 @@ public class TopLevelReadTransaction extends ReadTransaction {
 
     @Override
     protected Transaction commitAndBeginTx(boolean readOnly) {
+    	//tuning: super.commit() and super.beginWithActiveRecord() deal with statistics
         context().inCommitAndBegin = true;
         commitTx(true);
         context().inCommitAndBegin = false;

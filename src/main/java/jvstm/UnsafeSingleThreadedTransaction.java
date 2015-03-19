@@ -58,17 +58,20 @@ public class UnsafeSingleThreadedTransaction extends Transaction {
         // renumber the TX to the new number
         setNumber(newTxNumber);
 
+        //tuning: super.start() deals with statistics
         super.start();
     }
 
     @Override
     protected Transaction commitAndBeginTx(boolean readOnly) {
+    	//tuning: super.commit() and super.beginUnsafeSingleThreaded() deal with statistics
         commitTx(true);
         return Transaction.beginUnsafeSingleThreaded();
     }
 
     @Override
     public void abortTx() {
+    	//tuning: super.commit() deals with statistics
         commitTx(true);
         // throw new
         // Error("An UnsafeSingleThreaded transaction cannot abort.  I've committed it instead.");
@@ -174,4 +177,9 @@ public class UnsafeSingleThreadedTransaction extends Transaction {
     public boolean isWriteTransaction() {
         return true;
     }
+
+	@Override
+	public boolean isNested() {
+		return false;
+	}
 }

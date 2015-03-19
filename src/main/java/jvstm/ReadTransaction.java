@@ -38,6 +38,7 @@ public class ReadTransaction extends Transaction {
 
     @Override
     protected Transaction commitAndBeginTx(boolean readOnly) {
+    	//tuning: super.commit() and super.beginWithActiveRecord() deal with statistics
         commitTx(true);
         return beginWithActiveRecord(readOnly, null);
     }
@@ -99,4 +100,9 @@ public class ReadTransaction extends Transaction {
     public boolean isWriteTransaction() {
         return false;
     }
+
+	@Override
+	public boolean isNested() {
+		return false;
+	}
 }

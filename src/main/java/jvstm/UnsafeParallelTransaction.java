@@ -60,6 +60,10 @@ public class UnsafeParallelTransaction extends ParallelNestedTransaction {
 
     @Override
     public void abortTx() {
+    	
+    	//tuning: statistics
+    	threadStatistics.get().incAbortCount();
+    	
         boxesWritten = null;
         perTxValues = null;
 
@@ -73,6 +77,8 @@ public class UnsafeParallelTransaction extends ParallelNestedTransaction {
         globalReads = null;
         boxesWrittenInPlace = null;
         Transaction.current.set(null);
+        
+        releaseTopLevelTransactionPermit();
     }
 
     @Override

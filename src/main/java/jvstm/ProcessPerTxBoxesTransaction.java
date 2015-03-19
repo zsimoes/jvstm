@@ -174,4 +174,9 @@ public class ProcessPerTxBoxesTransaction extends Transaction {
         throw new UnsupportedOperationException(UNSUPPORTED_MESSAGE);
     }
 
+	@Override
+	public boolean isNested() {
+		return true;
+	}
+
 }

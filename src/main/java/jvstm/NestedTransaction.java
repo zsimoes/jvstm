@@ -28,6 +28,7 @@ package jvstm;
 import java.util.IdentityHashMap;
 import java.util.Map;
 
+import jvstm.tuning.ThreadStatistics;
 import jvstm.util.Cons;
 
 /**
@@ -62,6 +63,10 @@ public class NestedTransaction extends ReadWriteTransaction {
 
     @Override
     public void abortTx() {
+    	
+    	//tuning: statistics
+    	threadStatistics.get().incAbortCount();
+    	
         // do not call super, we do not want to make the Orec of the ancestor
         // aborted (at least not yet, it might happen depending on the nature
         // of the abort)
@@ -94,6 +99,8 @@ public class NestedTransaction extends ReadWriteTransaction {
         mergedTxs = null;
         linearNestedOrecs = null;
         current.set(this.getParent());
+        
+        releaseTopLevelTransactionPermit();
     }
 
     protected boolean isAncestor(Transaction tx) {
@@ -146,7 +153,9 @@ public class NestedTransaction extends ReadWriteTransaction {
 
     @Override
     protected Transaction commitAndBeginTx(boolean readOnly) {
+    	//tuning: super.commitTx() deals with statistics
         commitTx(true);
+        //tuning: super.beginWithActiveRecord() deals with statistics
         return beginWithActiveRecord(readOnly, null);
     }
 
@@ -244,4 +253,9 @@ public class NestedTransaction extends ReadWriteTransaction {
             }
         }
     }
+
+	@Override
+	public boolean isNested() {
+		return true;
+	}
 }
