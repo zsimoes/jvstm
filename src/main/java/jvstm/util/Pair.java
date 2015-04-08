@@ -54,4 +54,9 @@ public class Pair<E1,E2> {
     private static boolean eq(Object o1, Object o2) {
         return ((o1 == o2) || ((o1 != null) && o1.equals(o2)));
     }
+    
+    @Override
+    public String toString() {
+    	return "Point[" + first + "," + second + "]";
+    }
 }

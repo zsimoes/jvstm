@@ -51,4 +51,9 @@ public class TopLevelReadTransaction extends ReadTransaction {
             context().oldestRequiredVersion = null;
         }
     }
+    
+    public static boolean isNested() {
+		return false;
+	}
+    
 }

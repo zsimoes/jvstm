@@ -62,7 +62,7 @@ public class UnsafeParallelTransaction extends ParallelNestedTransaction {
     public void abortTx() {
     	
     	//tuning: statistics
-    	threadStatistics.get().incAbortCount();
+    	tuningContext.get().getStatistics().incAbortCount();
     	
         boxesWritten = null;
         perTxValues = null;
@@ -78,7 +78,7 @@ public class UnsafeParallelTransaction extends ParallelNestedTransaction {
         boxesWrittenInPlace = null;
         Transaction.current.set(null);
         
-        releaseTopLevelTransactionPermit();
+        controller.finishTransaction(tuningContext.get());
     }
 
     @Override
@@ -233,6 +233,10 @@ public class UnsafeParallelTransaction extends ParallelNestedTransaction {
     @Override
     protected Transaction commitAndBeginTx(boolean readOnly) {
         throw new Error("Unsafe Parallel Transaction cannot use 'commit and begin'");
+    }
+    
+    public static boolean isNested() {
+    	return true;
     }
 
 }

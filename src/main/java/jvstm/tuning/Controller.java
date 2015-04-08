@@ -2,30 +2,22 @@ package jvstm.tuning;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.Semaphore;
 import java.util.concurrent.atomic.AtomicInteger;
 
-import jvstm.Transaction;
+import jvstm.tuning.policy.DiagonalGradientDescent;
+import jvstm.tuning.policy.TuningPolicy;
 
 public class Controller implements Runnable {
 
-	private Semaphore topLevelSemaphore;
-	private AtomicInteger maxTopLevelThreads;
-	private AtomicInteger maxNestedThreads;
+	// Region tuning fields
+	private TuningPolicy policy;
+	// EndRegion
 
-	private Map<Long, ThreadStatistics> topLevelStatistics;
-	private Map<Long, ThreadStatistics> nestedStatistics;
-
-	private ThreadStatistics globalTopLevelStatistics;
-	private ThreadStatistics globalNestedStatistics;
-
+	// Region singleton
 	private Controller() {
-		topLevelStatistics = new HashMap<Long, ThreadStatistics>();
-		nestedStatistics = new HashMap<Long, ThreadStatistics>();
-		topLevelSemaphore = new Semaphore(Integer.MAX_VALUE);
-		
-		maxTopLevelThreads = new AtomicInteger(Integer.MAX_VALUE);
-		maxNestedThreads = new AtomicInteger(Transaction.getThreadPoolSize());
+		// HERE introduce GD
+		policy = new DiagonalGradientDescent();
+
 	}
 
 	private static Controller instance;
@@ -39,98 +31,63 @@ public class Controller implements Runnable {
 		return instance;
 	}
 
-	public void register(ThreadStatistics stats, boolean nested) {
-		if (nested) {
-			nestedStatistics.put(stats.getThreadId(), stats);
-		} else {
-			topLevelStatistics.put(stats.getThreadId(), stats);
-		}
-	}
-
-	// to do: use lock?
-	// does not cause memory consistency errors but is not thread-safe
-	public void merge() {
-		for (ThreadStatistics stat : topLevelStatistics.values()) {
-			stat.addTo(globalTopLevelStatistics);
-		}
-		for (ThreadStatistics stat : nestedStatistics.values()) {
-			stat.addTo(globalNestedStatistics);
-		}
-	}
-	
 	public static boolean isRunning() {
 		return running;
 	}
-	
+
 	protected static void setRunning(boolean isRunning) {
 		running = isRunning;
 	}
 
-	/* for test purposes */
-	private int originalNestedPoolSize;
-	
-	/* for test purposes */
-	private int originalTopLevelSize;
-	
+	// EndRegion
+
+	public void registerContext(TuningContext context) {
+		policy.registerContext(context);
+	}
+
+	// TODO: change boolean to nestinglevel
+	public TuningContext registerThread(long threadId, boolean nested) {
+		return policy.registerThread(threadId, nested);
+	}
+
+	// Region tuning
+
 	@Override
 	public void run() {
-		if(isRunning()) return; 
-		originalNestedPoolSize = Transaction.getThreadPoolSize();
-		originalTopLevelSize = maxTopLevelThreads.get();
 		while (true) {
 			try {
-				Thread.sleep(100);
-				merge();
-				manageNestedPool();
-				manageTopLevelThreads();
+				Thread.sleep(300);
+				policy.run(true);
 			} catch (InterruptedException e) {
 			}
 		}
 	}
-	
+
 	public static void startThread() {
-		if(isRunning()) return; 
+		if (isRunning())
+			return;
 		Thread controller = new Thread(instance());
+		controller.setDaemon(true);
 		setRunning(true);
 		controller.start();
 	}
 
-	protected void manageNestedPool() {
-		if (Transaction.getThreadPoolSize() == originalNestedPoolSize) {
-			Transaction.setThreadPoolSize(originalNestedPoolSize / 2);
-		} else {
-			Transaction.setThreadPoolSize(originalNestedPoolSize);
-		}
-	}
-	
-	protected void manageTopLevelThreads() {
+	public void finishTransaction(TuningContext t) {
+		policy.finishTransaction(t);
 	}
 
-	public void acquireTopLevelTransactionPermit() {
-		try {
-			topLevelSemaphore.acquire();
-		} catch (InterruptedException e) {
-		}
+	public void tryRunTransaction(TuningContext t) {
+		policy.tryRunTransaction(t);
 	}
 
-	public void releaseTopLevelTransactionPermit() {
-		topLevelSemaphore.release();
+	public AtomicInteger getMaxTopLevelThreads() {
+		return policy.getMaxTopLevelThreads();
 	}
 
-	public int getMaxTopLevelThreads() {
-		return maxTopLevelThreads.get();
+	public AtomicInteger getMaxNestedThreads() {
+		return policy.getMaxNestedThreads();
 	}
 
-	public void setMaxTopLevelThreads(int maxTopLevelThreads) {
-		this.maxTopLevelThreads.set(maxTopLevelThreads);
-	}
-
-	public int getMaxNestedThreads() {
-		return maxNestedThreads.get();
-	}
-
-	public void setMaxNestedThreads(int maxNestedThreads) {
-		this.maxNestedThreads.set(maxNestedThreads);
-	}
+	// EndRegion
 
 }

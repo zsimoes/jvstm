@@ -44,30 +44,37 @@ public abstract class TestPoint<T extends Number> extends TestCase{
     }
     @Test
     public void testRunSingleThread() throws Exception{
+    	System.out.println("SingleThread");
         RunSingleThread.performTest(pointFac.make(7, 8));
     }
     @Test
     public void testRwWithRo() throws Exception{
+    	System.out.println("testRwWithRo");
         RunRwWithRo.performTest(pointFac.make(7, 8));
     }
     @Test
     public void testRunRwWithRw() throws Exception{
+    	System.out.println("RunRwWithRw");
         RunRwWithRw.performTest(pointFac.make(7, 8));
     }
     @Test
     public void testRwWithRwConflictDisjointFields() throws Exception{
+    	System.out.println("RwWithRwConflictDisjointFields");
         RunRwWithRwConflictDisjointFields.performTest(pointFac.make(7, 8));
     }
     @Test
     public void testRwWithRwConflictSameFields() throws Exception{
+    	System.out.println("RwWithRwConflictSameFields");
         RunRwWithRwConflictSameFields.performTest(pointFac.make(7, 8));
     }
     @Test
     public void testRwWithRwNoWaitAllExtendedObjects() throws Exception{
+    	System.out.println("RwWithRwNoWaitAllExtendedObjects");
         RunRwWithRwNoWaitAllExtendedObjects.performTest(pointFac.make(7, 8));
     }
     @Test
     public void testRunMultipleThreadsInLoop() throws Exception{
+    	System.out.println("RunMultipleThreadsInLoop");
         RunMultipleThreadsInLoop.performTest(8, 1024, pointFac.make(7, 8));
     }
 }

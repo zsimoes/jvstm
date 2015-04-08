@@ -303,8 +303,7 @@ public class TopLevelTransaction extends ReadWriteTransaction {
         }
     }
 
-	@Override
-	public boolean isNested() {
+	public static boolean isNested() {
 		return false;
 	}
 }

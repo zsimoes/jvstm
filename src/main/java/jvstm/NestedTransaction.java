@@ -65,7 +65,7 @@ public class NestedTransaction extends ReadWriteTransaction {
     public void abortTx() {
     	
     	//tuning: statistics
-    	threadStatistics.get().incAbortCount();
+    	tuningContext.get().getStatistics().incAbortCount();
     	
         // do not call super, we do not want to make the Orec of the ancestor
         // aborted (at least not yet, it might happen depending on the nature
@@ -100,7 +100,7 @@ public class NestedTransaction extends ReadWriteTransaction {
         linearNestedOrecs = null;
         current.set(this.getParent());
         
-        releaseTopLevelTransactionPermit();
+        controller.finishTransaction(tuningContext.get());
     }
 
     protected boolean isAncestor(Transaction tx) {
@@ -254,8 +254,7 @@ public class NestedTransaction extends ReadWriteTransaction {
         }
     }
 
-	@Override
-	public boolean isNested() {
+	public static boolean isNested() {
 		return true;
 	}
 }

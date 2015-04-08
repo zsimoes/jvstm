@@ -42,59 +42,56 @@ import jvstm.gc.GCTask;
 import jvstm.gc.TxContext;
 import jvstm.tuning.AbortingThreadPool;
 import jvstm.tuning.Controller;
+import jvstm.tuning.ThreadState;
 import jvstm.tuning.ThreadStatistics;
+import jvstm.tuning.TuningContext;
 
 public abstract class Transaction {
-    // static part starts here
+	// static part starts here
 
-    /*
-     * The mostRecentCommittedRecord static field is volatile to ensure correct
-     * synchronization among different threads:
-     *
-     * - A newly created transaction reads the value of this field at
-     *   the very beginning of its existence, before trying to
-     *   access any box.
-     *
-     * - A write transaction writes to this field at the very end,
-     *   after commiting all the boxes to their new values.
-     *
-     * This way, because of the new semantics of the Java Memory
-     * Model, as specified by JSR133 (which is incorporated in the
-     * newest Java Language Specification), we know that all the
-     * values written previously in the commit of write transaction
-     * will be visible to any other transaction that is created with
-     * the new value of the committed field.
-     *
-     * This change is sufficient to ensure the correct synchronization
-     * guarantees, even if we remove all the remaining volatile
-     * declarations from the VBox and VBoxBody classes.
-     */
+	/*
+	 * The mostRecentCommittedRecord static field is volatile to ensure correct
+	 * synchronization among different threads:
+	 * 
+	 * - A newly created transaction reads the value of this field at the very
+	 * beginning of its existence, before trying to access any box.
+	 * 
+	 * - A write transaction writes to this field at the very end, after
+	 * commiting all the boxes to their new values.
+	 * 
+	 * This way, because of the new semantics of the Java Memory Model, as
+	 * specified by JSR133 (which is incorporated in the newest Java Language
+	 * Specification), we know that all the values written previously in the
+	 * commit of write transaction will be visible to any other transaction that
+	 * is created with the new value of the committed field.
+	 * 
+	 * This change is sufficient to ensure the correct synchronization
+	 * guarantees, even if we remove all the remaining volatile declarations
+	 * from the VBox and VBoxBody classes.
+	 */
 
-	/* /// tuning impl */
-    // note: I had to move this code up here because the original Transaction's static initializers caused trouble.
-    //		 The static call to ActiveTransactionsRecord.makeSentinelRecord() caused a loop which called Transaction's 
-    //		 static initializer again before these were initialized, which broke either the GCTask or the nestedParPoll.
-    
+	/*
+	 * JS Tuning Impl Note: I had to move the following code up here because the
+	 * original Transaction's static initializers caused trouble. The static
+	 * call to ActiveTransactionsRecord.makeSentinelRecord() caused a loop which
+	 * called Transaction's static initializer again before these were
+	 * initialized, which broke either the GCTask or the nestedParPoll.
+	 */
+
 	static final String TP_PROP = "jvstm.tp.forceabort";
+
+	protected static ThreadLocal<TuningContext> tuningContext = new ThreadLocal<TuningContext>() {
+		@Override
+		protected TuningContext initialValue() {
+			return Controller.instance().registerThread(Thread.currentThread().getId(), false);
+		}
+	};
 	
-    // tuning impl: a per thread statistic
-    protected static final ThreadLocal<ThreadStatistics> threadStatistics = new ThreadLocal<ThreadStatistics>() {
-    	@Override
-    	protected ThreadStatistics initialValue() { 
-    		return new ThreadStatistics(Thread.currentThread().getId(), 0);
-    	}
-    };
-    
-    protected static final ThreadLocal<Boolean> statisticsRegistered = new ThreadLocal<Boolean>() {
-    	@Override
-    	protected Boolean initialValue() {
-    		return new Boolean(false);
-    	}
-    };
-    
+	protected static Controller controller = Controller.instance();
+
 	static {
 		boolean useAbortingThreadPool = Boolean.getBoolean(TP_PROP);
-		
+
 		useAbortingThreadPool = true;
 
 		/*
@@ -104,8 +101,19 @@ public abstract class Transaction {
 		 */
 		if (useAbortingThreadPool) {
 			// use aborting thread pool
-			nestedParPool = AbortingThreadPool.newAbortingThreadPool(Runtime
-					.getRuntime().availableProcessors() * 2,
+			nestedParPool = AbortingThreadPool.newAbortingThreadPool(Runtime.getRuntime().availableProcessors() * 2,
+					new ThreadFactory() {
+						@Override
+						public Thread newThread(Runnable r) {
+							Thread t = new Thread(r);
+							t.setDaemon(true);
+
+							return t;
+						}
+					});
+		} else {
+			// use default fixed thread pool
+			nestedParPool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2,
 					new ThreadFactory() {
 						@Override
 						public Thread newThread(Runnable r) {
@@ -114,17 +122,6 @@ public abstract class Transaction {
 							return t;
 						}
 					});
-		} else {
-			// use default fixed thread pool
-			nestedParPool = Executors.newFixedThreadPool(Runtime.getRuntime()
-					.availableProcessors() * 2, new ThreadFactory() {
-				@Override
-				public Thread newThread(Runnable r) {
-					Thread t = new Thread(r);
-					t.setDaemon(true);
-					return t;
-				}
-			});
 		}
 
 		// start the tuning controller thread
@@ -133,542 +130,568 @@ public abstract class Transaction {
 		}
 	}
 	/* /// tuning impl */
-	
-    public static volatile ActiveTransactionsRecord mostRecentCommittedRecord = ActiveTransactionsRecord.makeSentinelRecord();
 
-    protected static final ThreadLocal<Transaction> current = new ThreadLocal<Transaction>();
-    
-    // a per thread TxContext
-    private static final ThreadLocal<TxContext> threadTxContext = new ThreadLocal<TxContext>() {
-        @Override protected TxContext initialValue() {
-            return Transaction.allTxContexts.enqueue(new TxContext(Thread.currentThread()));
-        }
-    };
+	public static volatile ActiveTransactionsRecord mostRecentCommittedRecord = ActiveTransactionsRecord
+			.makeSentinelRecord();
 
-    // List of all tx contexts.  The GC thread will iterate this list to GC any unused ActiveTxRecords.
-    public static TxContext allTxContexts = null;
-    public static final GCTask gcTask; // added by FMC for unit test purpose
-    static final String GC_PROP = "jvstm.gc.disabled";
-    
-    protected static ExecutorService nestedParPool;
-    
-    public static void setThreadPoolSize(int size) {
-    	((ThreadPoolExecutor)nestedParPool).setCorePoolSize(size);
-    }
-    
-    public static int getThreadPoolSize() {
-    	return ((ThreadPoolExecutor)nestedParPool).getCorePoolSize();
-    }
-    
-    protected void acquireTopLevelTransactionPermit() {
-    	if(!this.isNested()) {
-    		Controller.instance().acquireTopLevelTransactionPermit();
-    	}
-    }
-    protected void releaseTopLevelTransactionPermit() {
-    	if(!this.isNested()) {
-    		Controller.instance().releaseTopLevelTransactionPermit();
-    	}
-    }
+	protected static final ThreadLocal<Transaction> current = new ThreadLocal<Transaction>();
 
-    static {
-        // initialize the allTxContexts
-        Transaction.allTxContexts = new TxContext(null);
+	// a per thread TxContext
+	private static final ThreadLocal<TxContext> threadTxContext = new ThreadLocal<TxContext>() {
+		@Override
+		protected TxContext initialValue() {
+			return Transaction.allTxContexts.enqueue(new TxContext(Thread.currentThread()));
+		}
+	};
 
-        // start the GC thread.
-        boolean gcDisabled = Boolean.getBoolean(GC_PROP);
-        Logger logger = Logger.getLogger("jvstm");
-        /*logger.info(String.format(
-                "********** GC vbodies = %b (disable/enable it in property %s)",
-                !gcDisabled,
-                GC_PROP));*/
-        gcTask = new GCTask(mostRecentCommittedRecord);
-        if(!gcDisabled){
-            Thread gc = new Thread(gcTask);
-            gc.setDaemon(true);
-            gc.start();
-        }
+	// List of all tx contexts. The GC thread will iterate this list to GC any
+	// unused ActiveTxRecords.
+	public static TxContext allTxContexts = null;
+	public static final GCTask gcTask; // added by FMC for unit test purpose
+	static final String GC_PROP = "jvstm.gc.disabled";
+
+	protected static ExecutorService nestedParPool;
+
+	public static void setThreadPoolSize(int size) {
+		((ThreadPoolExecutor) nestedParPool).setCorePoolSize(size);
 	}
 
-    private static TransactionFactory TRANSACTION_FACTORY = new DefaultTransactionFactory();
-
-    public static void setTransactionFactory(TransactionFactory factory) {
-        TRANSACTION_FACTORY = factory;
-    }
-
-    public static Transaction current() {
-        return current.get();
-    }
-
-    public static TxContext context() {
-        return Transaction.threadTxContext.get();
-    }
-
-    // This method is called during the commit of a write transaction.  Even though it is possible
-    // for more than one method to write to this slot at the same time, this could only cause a new
-    // transaction to see some record that might not be the most recent one.  However, this is ok,
-    // because when a transactio begin it will check for another more recent record.
-    public static void setMostRecentCommittedRecord(ActiveTransactionsRecord record) {
-        mostRecentCommittedRecord = record;
-    }
-
-    public static void addTxQueueListener(TxQueueListener listener) {
-        ActiveTransactionsRecord.addListener(listener);
-    }
-
-    public static boolean isInTransaction() {
-        return current.get() != null;
-    }
-
-    public static ActiveTransactionsRecord getRecordForNewTransaction() {
-        ActiveTransactionsRecord rec = Transaction.mostRecentCommittedRecord;
-
-        TxContext ctx = threadTxContext.get();
-        ctx.oldestRequiredVersion = rec; // volatile write
-
-        while (true) {
-            while ((rec.getNext() != null) && (rec.getNext().isCommitted())) {
-                rec = rec.getNext();
-            }
-            if (rec != ctx.oldestRequiredVersion) {
-                // a more recent record exists, so backoff and try again with the new one
-                ctx.oldestRequiredVersion = rec; // volatile write
-            } else {
-                return rec;
-            }
-        }
-    }
-
-    /** Warning: this method has limited usability.  See the UnsafeSingleThreaded class for
-     * details */
-    public static Transaction beginUnsafeSingleThreaded() {
-        Transaction parent = current.get();
-        if (parent != null) {
-            throw new Error("Unsafe single-threaded transactions cannot be nested");
-        }
-
-        ActiveTransactionsRecord activeRecord = getRecordForNewTransaction();
-        Transaction tx = new UnsafeSingleThreadedTransaction(activeRecord);
-        tx.start();
-        return tx;
-    }
-
-    public static Transaction beginInevitable() {
-        Transaction parent = current.get();
-        if (parent != null) {
-            throw new Error("Inevitable transactions cannot be nested");
-        }
-
-        ActiveTransactionsRecord activeRecord = getRecordForNewTransaction();
-        Transaction tx = new InevitableTransaction(activeRecord);
-        tx.start();
-        //tuning impl: statistics delegated to start()
-        return tx;
-    }
-
-    public static Transaction begin() {
-        return begin(false);
-    }
-
-    public static Transaction begin(boolean readOnly) {
-        ActiveTransactionsRecord activeRecord = null;
-        Transaction parent = current();
-
-        if (TRANSACTION_FACTORY.reuseTopLevelReadOnlyTransactions() && parent == null && readOnly) {
-            Transaction tx = getRecordForNewTransaction().tx;
-            tx.start();
-            //tuning impl: statistics delegated to start()
-            return tx;
-        }
-
-        if (parent == null) {
-            activeRecord = getRecordForNewTransaction();
-        }
-
-        //tuning impl: statistics delegated to beginWithActiveRecord()
-        return beginWithActiveRecord(readOnly, activeRecord);
-    }
-
-    // activeRecord may be null, iff the parent is also null, in which case activeRecord is not used, so it's ok!
-    protected static Transaction beginWithActiveRecord(boolean readOnly, ActiveTransactionsRecord activeRecord) {
-        Transaction parent = current.get();
-        Transaction tx = null;
-
-        if (parent == null) {
-            if (readOnly) {
-                tx = TRANSACTION_FACTORY.makeReadOnlyTopLevelTransaction(activeRecord);
-            } else {
-                tx = TRANSACTION_FACTORY.makeTopLevelTransaction(activeRecord);
-            }
-        } else {
-            // passing the readOnly parameter to makeNestedTransaction is a temporary solution to
-            // support the correct semantics in the composition of @Atomic annotations.  Ideally, we
-            // should adjust the code generation of @Atomic to let WriteOnReadExceptions pass to the
-            // parent
-            tx = parent.makeNestedTransaction(readOnly);
-        }
-        tx.start();
-        //tuning impl: statistics delegated to start()
-        return tx;
-    }
-
-    /* When this method succeeds, it commits the current transaction and begins another in a consistent state with the
-     * previous transaction, i.e., if the committing transaction is read-only, then the next transaction begins in the
-     * same version that the read-only transaction used; if the committing transaction is read-write and the commit
-     * succeeds, the new transaction begins in the version that the read-write transaction produced.
-     */
-    public static Transaction commitAndBegin(boolean readOnly) {
-        Transaction tx = current.get();
-        //tuning: statistics delegated to commitAndBegin(), which in turn delegates to commitTx() and beginWithActiveRecord()
-        return tx.commitAndBeginTx(readOnly);
-    }
-
-    public static Transaction beginParallelNested(boolean readOnly) {
-        Transaction parent = current.get();
-        Transaction tx = parent.makeParallelNestedTransaction(readOnly);
-        //tuning impl: statistics delegated to start()
-        tx.start();
-        return tx;
-    }
-
-    public static Transaction beginUnsafeMultithreaded() {
-        Transaction parent = current.get();
-        Transaction tx = parent.makeUnsafeMultithreaded();
-        tx.start();
-        //tuning impl: statistics delegated to start()
-        return tx;
-    }
-
-    //TUNING --- replace with abortingThreadPool
-    public static void initThreadPool(int numberThreads) {
-        nestedParPool = Executors.newFixedThreadPool(numberThreads, new ThreadFactory() {
-            @Override
-            public Thread newThread(Runnable r) {
-                Thread t = new Thread(r);
-                t.setDaemon(true);
-                return t;
-            }
-        });
-    }
-
-    //TUNING --- replace with abortingThreadPool
-    public static void initCachedThreadPool() {
-        nestedParPool = Executors.newCachedThreadPool(new ThreadFactory() {
-            @Override
-            public Thread newThread(Runnable r) {
-                Thread t = new Thread(r);
-                t.setDaemon(true);
-                return t;
-            }
-        });
-    }
-    public <E> List<E> manageNestedParallelTxs(List<? extends TransactionalTask<E>> callables) {
-        return manageNestedParallelTxs(callables, nestedParPool);
-    }
-
-    protected boolean flattenNested = false;
-
-    public <E> List<E> manageNestedParallelTxs(List<? extends TransactionalTask<E>> callables, ExecutorService threadPool) {
-        List<E> results = new ArrayList<E>();
-        if (flattenNested) {
-            try {
-                for (TransactionalTask<E> callable : callables) {
-                    results.add((callable).execute());
-                }
-            } catch (Throwable t) {
-                if (t instanceof RuntimeException) {
-                    throw (RuntimeException) t;
-                } else {
-                    t.printStackTrace();
-                    System.exit(0);
-                    return null;
-                }
-            }
-            return results;
-        }
-
-        List<Future<E>> futures = null;
-        List<TransactionalTask<E>> repeatList = null;
-        boolean finishedCorrectly = false;
-        try {
-            futures = threadPool.invokeAll(callables);
-            int futureLength = futures.size();
-            for (int i = 0; i < futureLength; i++) {
-                try {
-                    results.add(futures.get(i).get());
-                } catch (ExecutionException ee) {
-                    Throwable t = ee.getCause();
-                    if (t instanceof ExecuteParallelNestedTxSequentiallyException) {
-                        if (repeatList == null) {
-                            repeatList = new ArrayList<TransactionalTask<E>>();
-                        }
-                        repeatList.add(callables.get(i));
-                    } else if (t instanceof RuntimeException) {
-                        throw (RuntimeException) t;
-                    } else {
-                        throw new RuntimeException(ee);
-                    }
-                }
-            }
-            finishedCorrectly = true;
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        } finally {
-            if (!finishedCorrectly) {
-                for (Future<E> future : futures) {
-                    try {
-                        future.get();
-                    } catch (InterruptedException e) {
-                    } catch (ExecutionException e) {
-                    }
-                }
-            } else if (repeatList != null) {
-                flattenNested = true;
-                try {
-                    for (TransactionalTask<E> callable : repeatList) {
-                        results.add(callable.execute());
-                    }
-                } catch (Throwable t) {
-                    if (t instanceof RuntimeException) {
-                        throw (RuntimeException) t;
-                    } else {
-                        throw new RuntimeException(t);
-                    }
-                }
-                flattenNested = false;
-            }
-        }
-        return results;
-    }
-
-    public static void abort() {
-        Transaction tx = current.get();
-        tx.abortTx();
-        //tuning impl: statistics delegated to abortTx()
-        tx.releaseTopLevelTransactionPermit();
-    }
-
-    public static void commit() {
-        Transaction tx = current.get();
-        tx.commitTx(true);
-      //tuning impl: statistics delegated to commitTX()
-    }
-
-    public static void checkpoint() {
-        Transaction tx = current.get();
-        tx.commitTx(false);
-      //tuning impl: statistics delegated to commitTx()
-    }
-
-    public static SuspendedTransaction suspend() {
-        return current.get().suspendTx();
-    }
-
-    public static Transaction resume(SuspendedTransaction suspendedTx) {
-        if (current.get() != null) {
-            throw new ResumeException("Can't resume a transaction into a thread with an active transaction already");
-        }
-
-        // In the previous lines I'm checking that the current thread
-        // has no transaction, because, otherwise, we would lose the
-        // current transaction.
-        //
-        // Likewise, I should not allow that the same transaction is
-        // associated with more than one thread.  For that, however, I
-        // would have to keep track of which thread owns each
-        // transaction and change that atomically.  I recall having
-        // the thread in each transaction but I removed sometime ago.
-        // So, until I investigate this further, whoever is using this
-        // resume stuff must be carefull, because the system will not
-        // detect that the same transaction is being used in two
-        // different threads.
-
-        TxContext currentTxContext = context();
-        currentTxContext.oldestRequiredVersion = suspendedTx.txContext.oldestRequiredVersion;
-        /* NOTE: we CANNOT set
-         * suspendedTx.txContext.oldestRequiredVersion = null;
-         *
-         * Doing so would allow the GCTask to miss out on this version, by seeing null in the oldestRequiredVersion of
-         * both the currentTxContext and the suspendedTx.txContext.  The TxContext in suspendedTx will be removed from
-         * the list when the now resumed transaction becomes GCed.
-         */
-
-        // set the transaction in this thread
-        current.set(suspendedTx.theTx);
-        // return the resumed transaction
-        return suspendedTx.theTx;
-    }
-
-    // the transaction version that is used to read boxes. Must always represent a consistent state
-    // of the world
-    protected int number;
-    protected final Transaction parent;
-    /*
-     * This orec identifies newly created objects by this transaction.
-     * We say these objects are in captured memory corresponding to memory
-     * allocated inside a transaction that cannot escape (i.e., is captured
-     * by) its allocating transaction.
-     * Later and before performing an STM barrier we can check if an object is
-     * in captured memory and in that case we can read or update it in place
-     * avoiding the STM barrier.
-     */
-    public final OwnershipRecord orecForNewObjects = new OwnershipRecord();
-
-    public Transaction(Transaction parent, int number) {
-        this.parent = parent;
-        this.number = number;
-        //register statistics (once per thread):
-        if(!statisticsRegistered.get()) {
-        	Controller.instance().register(threadStatistics.get(), this.isNested());
-        	statisticsRegistered.set(true);
-        	//tuning to-do: deal with nested txs
-    	}
-    }
-
-    public Transaction(int number) {
-        this(null, number);
-    }
-
-    public Transaction(Transaction parent) {
-        this(parent, parent.getNumber());
-    }
-
-    public void start() {
-    	//tuning: statistics
-    	acquireTopLevelTransactionPermit();
-    	threadStatistics.get().incTransactionCount();
-        current.set(this);
-    }
-
-    protected Transaction getParent() {
-        return parent;
-    }
-
-    public int getNumber() {
-        return number;
-    }
-
-    protected void setNumber(int number) {
-        this.number = number;
-    }
-
-    public void abortTx() {
-    	//tuning impl: statistics
-    	threadStatistics.get().incAbortCount();
-        finishTx();
-    }
-
-    public void commitTx(boolean finishAlso) {
-        doCommit();
-
-        //tuning impl: statistics
-        releaseTopLevelTransactionPermit();
-        threadStatistics.get().incCommitCount();
-        if (finishAlso) {
-            finishTx();
-        }
-    }
-
-    private void finishTx() {
-        finish();
-
-        current.set(this.getParent());
-    }
-
-    protected void finish() {
-        // intentionally empty
-    }
-
-    public SuspendedTransaction suspendTx() {
-        // remove the transaction from the thread
-        current.set(null);
-
-        TxContext newTxContext = new TxContext(this);
-        // create a new SuspendedTransaction holding the transaction and its context.
-        SuspendedTransaction suspendedTx = new SuspendedTransaction(this, newTxContext);
-        // enqueue the new TxContext to hold the transaction's required record
-        Transaction.allTxContexts.enqueue(newTxContext);
-        TxContext currentTxContext = context();
-        // the order is important! We must not let go of the required version, so we set it ahead before clearing it in
-        // the current context
-        newTxContext.oldestRequiredVersion = currentTxContext.oldestRequiredVersion;
-        currentTxContext.oldestRequiredVersion = null;
-
-        return suspendedTx;
-        // the currentTxContext is left to be reused by this thread
-    }
-
-    protected abstract Transaction commitAndBeginTx(boolean readOnly);
-
-    public abstract Transaction makeNestedTransaction(boolean readOnly);
-
-    public abstract <T> T getBoxValue(VBox<T> vbox);
-
-    public abstract <T> void setBoxValue(VBox<T> vbox, T value);
-
-    public abstract <T> T getPerTxValue(PerTxBox<T> box, T initial);
-
-    public abstract <T> void setPerTxValue(PerTxBox<T> box, T value);
-
-    public abstract <T> T getArrayValue(VArrayEntry<T> entry);
-
-    public abstract <T> void setArrayValue(VArrayEntry<T> entry, T value);
-
-    protected abstract void doCommit();
-
-    public abstract Transaction makeUnsafeMultithreaded();
-
-    public abstract Transaction makeParallelNestedTransaction(boolean readOnly);
-
-    public abstract boolean isWriteTransaction();
-    
-    public abstract boolean isNested();
-
-    public static void transactionallyDo(TransactionalCommand command) {
-        while (true) {
-            Transaction tx = Transaction.begin();
-            try {
-                command.doIt();
-                tx.commit();
-                tx = null;
-                return;
-            } catch (CommitException ce) {
-                tx.abort();
-                tx = null;
-            } finally {
-                if (tx != null) {
-                    tx.abort();
-                }
-            }
-        }
-    }
-
-    public static <T> T doIt(Callable<T> xaction) throws Exception {
-        return doIt(xaction, false);
-    }
-
-    public static <T> T doIt(Callable<T> xaction, boolean tryReadOnly) throws Exception {
-        T result = null;
-        while (true) {
-            Transaction.begin(tryReadOnly);
-            boolean finished = false;
-            try {
-                result = xaction.call();
-                Transaction.commit();
-                finished = true;
-                return result;
-            } catch (CommitException ce) {
-                Transaction.abort();
-                finished = true;
-            } catch (WriteOnReadException wore) {
-                Transaction.abort();
-                finished = true;
-                tryReadOnly = false;
-            } finally {
-                if (! finished) {
-                    Transaction.abort();
-                }
-            }
-        }
-    }
+	public static int getThreadPoolSize() {
+		return ((ThreadPoolExecutor) nestedParPool).getCorePoolSize();
+	}
+
+	static {
+		// initialize the allTxContexts
+		Transaction.allTxContexts = new TxContext(null);
+
+		// start the GC thread.
+		boolean gcDisabled = Boolean.getBoolean(GC_PROP);
+		Logger logger = Logger.getLogger("jvstm");
+		/*
+		 * logger.info(String.format(
+		 * "********** GC vbodies = %b (disable/enable it in property %s)",
+		 * !gcDisabled, GC_PROP));
+		 */
+		gcTask = new GCTask(mostRecentCommittedRecord);
+		if (!gcDisabled) {
+			Thread gc = new Thread(gcTask);
+			gc.setDaemon(true);
+			gc.start();
+		}
+	}
+
+	private static TransactionFactory TRANSACTION_FACTORY = new DefaultTransactionFactory();
+
+	public static void setTransactionFactory(TransactionFactory factory) {
+		TRANSACTION_FACTORY = factory;
+	}
+
+	public static Transaction current() {
+		return current.get();
+	}
+
+	public static TxContext context() {
+		return Transaction.threadTxContext.get();
+	}
+
+	// This method is called during the commit of a write transaction. Even
+	// though it is possible
+	// for more than one method to write to this slot at the same time, this
+	// could only cause a new
+	// transaction to see some record that might not be the most recent one.
+	// However, this is ok,
+	// because when a transactio begin it will check for another more recent
+	// record.
+	public static void setMostRecentCommittedRecord(ActiveTransactionsRecord record) {
+		mostRecentCommittedRecord = record;
+	}
+
+	public static void addTxQueueListener(TxQueueListener listener) {
+		ActiveTransactionsRecord.addListener(listener);
+	}
+
+	public static boolean isInTransaction() {
+		return current.get() != null;
+	}
+
+	public static ActiveTransactionsRecord getRecordForNewTransaction() {
+		ActiveTransactionsRecord rec = Transaction.mostRecentCommittedRecord;
+
+		TxContext ctx = threadTxContext.get();
+		ctx.oldestRequiredVersion = rec; // volatile write
+
+		while (true) {
+			while ((rec.getNext() != null) && (rec.getNext().isCommitted())) {
+				rec = rec.getNext();
+			}
+			if (rec != ctx.oldestRequiredVersion) {
+				// a more recent record exists, so backoff and try again with
+				// the new one
+				ctx.oldestRequiredVersion = rec; // volatile write
+			} else {
+				return rec;
+			}
+		}
+	}
+
+	/**
+	 * Warning: this method has limited usability. See the UnsafeSingleThreaded
+	 * class for details
+	 */
+	public static Transaction beginUnsafeSingleThreaded() {
+		Transaction parent = current.get();
+		if (parent != null) {
+			throw new Error("Unsafe single-threaded transactions cannot be nested");
+		}
+
+		ActiveTransactionsRecord activeRecord = getRecordForNewTransaction();
+		Transaction tx = new UnsafeSingleThreadedTransaction(activeRecord);
+		tx.start();
+		return tx;
+	}
+
+	public static Transaction beginInevitable() {
+		Transaction parent = current.get();
+		if (parent != null) {
+			throw new Error("Inevitable transactions cannot be nested");
+		}
+
+		ActiveTransactionsRecord activeRecord = getRecordForNewTransaction();
+		Transaction tx = new InevitableTransaction(activeRecord);
+		tx.start();
+		// tuning impl: statistics delegated to start()
+		return tx;
+	}
+
+	public static Transaction begin() {
+		return begin(false);
+	}
+
+	public static Transaction begin(boolean readOnly) {
+		ActiveTransactionsRecord activeRecord = null;
+		Transaction parent = current();
+
+		if (TRANSACTION_FACTORY.reuseTopLevelReadOnlyTransactions() && parent == null && readOnly) {
+			Transaction tx = getRecordForNewTransaction().tx;
+			tx.start();
+			// tuning impl: statistics delegated to start()
+			return tx;
+		}
+
+		if (parent == null) {
+			activeRecord = getRecordForNewTransaction();
+		}
+
+		// tuning impl: statistics delegated to beginWithActiveRecord()
+		return beginWithActiveRecord(readOnly, activeRecord);
+	}
+
+	// activeRecord may be null, iff the parent is also null, in which case
+	// activeRecord is not used, so it's ok!
+	protected static Transaction beginWithActiveRecord(boolean readOnly, ActiveTransactionsRecord activeRecord) {
+		Transaction parent = current.get();
+		Transaction tx = null;
+
+		if (parent == null) {
+			if (readOnly) {
+				tx = TRANSACTION_FACTORY.makeReadOnlyTopLevelTransaction(activeRecord);
+			} else {
+				tx = TRANSACTION_FACTORY.makeTopLevelTransaction(activeRecord);
+			}
+		} else {
+			// passing the readOnly parameter to makeNestedTransaction is a
+			// temporary solution to
+			// support the correct semantics in the composition of @Atomic
+			// annotations. Ideally, we
+			// should adjust the code generation of @Atomic to let
+			// WriteOnReadExceptions pass to the
+			// parent
+			tx = parent.makeNestedTransaction(readOnly);
+		}
+		tx.start();
+		// tuning impl: statistics delegated to start()
+		return tx;
+	}
+
+	/*
+	 * When this method succeeds, it commits the current transaction and begins
+	 * another in a consistent state with the previous transaction, i.e., if the
+	 * committing transaction is read-only, then the next transaction begins in
+	 * the same version that the read-only transaction used; if the committing
+	 * transaction is read-write and the commit succeeds, the new transaction
+	 * begins in the version that the read-write transaction produced.
+	 */
+	public static Transaction commitAndBegin(boolean readOnly) {
+		Transaction tx = current.get();
+		// tuning: statistics delegated to commitAndBegin(), which in turn
+		// delegates to commitTx() and beginWithActiveRecord()
+		return tx.commitAndBeginTx(readOnly);
+	}
+
+	public static Transaction beginParallelNested(boolean readOnly) {
+		Transaction parent = current.get();
+		Transaction tx = parent.makeParallelNestedTransaction(readOnly);
+		// tuning impl: statistics delegated to start()
+		tx.start();
+		return tx;
+	}
+
+	public static Transaction beginUnsafeMultithreaded() {
+		Transaction parent = current.get();
+		Transaction tx = parent.makeUnsafeMultithreaded();
+		tx.start();
+		// tuning impl: statistics delegated to start()
+		return tx;
+	}
+
+	// TUNING --- replace with abortingThreadPool
+	public static void initThreadPool(int numberThreads) {
+		nestedParPool = Executors.newFixedThreadPool(numberThreads, new ThreadFactory() {
+			@Override
+			public Thread newThread(Runnable r) {
+				Thread t = new Thread(r);
+				t.setDaemon(true);
+				return t;
+			}
+		});
+	}
+
+	// TUNING --- replace with abortingThreadPool
+	public static void initCachedThreadPool() {
+		nestedParPool = Executors.newCachedThreadPool(new ThreadFactory() {
+			@Override
+			public Thread newThread(Runnable r) {
+				Thread t = new Thread(r);
+				t.setDaemon(true);
+				return t;
+			}
+		});
+	}
+
+	public <E> List<E> manageNestedParallelTxs(List<? extends TransactionalTask<E>> callables) {
+		return manageNestedParallelTxs(callables, nestedParPool);
+	}
+
+	protected boolean flattenNested = false;
+
+	public <E> List<E> manageNestedParallelTxs(List<? extends TransactionalTask<E>> callables,
+			ExecutorService threadPool) {
+		List<E> results = new ArrayList<E>();
+		if (flattenNested) {
+			try {
+				for (TransactionalTask<E> callable : callables) {
+					results.add((callable).execute());
+				}
+			} catch (Throwable t) {
+				if (t instanceof RuntimeException) {
+					throw (RuntimeException) t;
+				} else {
+					t.printStackTrace();
+					System.exit(0);
+					return null;
+				}
+			}
+			return results;
+		}
+
+		List<Future<E>> futures = null;
+		List<TransactionalTask<E>> repeatList = null;
+		boolean finishedCorrectly = false;
+		try {
+			futures = threadPool.invokeAll(callables);
+			int futureLength = futures.size();
+			for (int i = 0; i < futureLength; i++) {
+				try {
+					results.add(futures.get(i).get());
+				} catch (ExecutionException ee) {
+					Throwable t = ee.getCause();
+					if (t instanceof ExecuteParallelNestedTxSequentiallyException) {
+						if (repeatList == null) {
+							repeatList = new ArrayList<TransactionalTask<E>>();
+						}
+						repeatList.add(callables.get(i));
+					} else if (t instanceof RuntimeException) {
+						throw (RuntimeException) t;
+					} else {
+						throw new RuntimeException(ee);
+					}
+				}
+			}
+			finishedCorrectly = true;
+		} catch (InterruptedException e) {
+			throw new RuntimeException(e);
+		} finally {
+			if (!finishedCorrectly) {
+				for (Future<E> future : futures) {
+					try {
+						future.get();
+					} catch (InterruptedException e) {
+					} catch (ExecutionException e) {
+					}
+				}
+			} else if (repeatList != null) {
+				flattenNested = true;
+				try {
+					for (TransactionalTask<E> callable : repeatList) {
+						results.add(callable.execute());
+					}
+				} catch (Throwable t) {
+					if (t instanceof RuntimeException) {
+						throw (RuntimeException) t;
+					} else {
+						throw new RuntimeException(t);
+					}
+				}
+				flattenNested = false;
+			}
+		}
+		return results;
+	}
+
+	public static void abort() {
+		Transaction tx = current.get();
+		tx.abortTx();
+		// tuning impl: statistics delegated to abortTx()
+	}
+
+	public static void commit() {
+		Transaction tx = current.get();
+		tx.commitTx(true);
+		// tuning impl: statistics delegated to commitTX()
+	}
+
+	public static void checkpoint() {
+		Transaction tx = current.get();
+		tx.commitTx(false);
+		// tuning impl: statistics delegated to commitTx()
+	}
+
+	public static SuspendedTransaction suspend() {
+		return current.get().suspendTx();
+	}
+
+	public static Transaction resume(SuspendedTransaction suspendedTx) {
+		if (current.get() != null) {
+			throw new ResumeException("Can't resume a transaction into a thread with an active transaction already");
+		}
+
+		// In the previous lines I'm checking that the current thread
+		// has no transaction, because, otherwise, we would lose the
+		// current transaction.
+		//
+		// Likewise, I should not allow that the same transaction is
+		// associated with more than one thread. For that, however, I
+		// would have to keep track of which thread owns each
+		// transaction and change that atomically. I recall having
+		// the thread in each transaction but I removed sometime ago.
+		// So, until I investigate this further, whoever is using this
+		// resume stuff must be carefull, because the system will not
+		// detect that the same transaction is being used in two
+		// different threads.
+
+		TxContext currentTxContext = context();
+		currentTxContext.oldestRequiredVersion = suspendedTx.txContext.oldestRequiredVersion;
+		/*
+		 * NOTE: we CANNOT set suspendedTx.txContext.oldestRequiredVersion =
+		 * null;
+		 * 
+		 * Doing so would allow the GCTask to miss out on this version, by
+		 * seeing null in the oldestRequiredVersion of both the currentTxContext
+		 * and the suspendedTx.txContext. The TxContext in suspendedTx will be
+		 * removed from the list when the now resumed transaction becomes GCed.
+		 */
+
+		// set the transaction in this thread
+		current.set(suspendedTx.theTx);
+		// return the resumed transaction
+		return suspendedTx.theTx;
+	}
+
+	// the transaction version that is used to read boxes. Must always represent
+	// a consistent state
+	// of the world
+	protected int number;
+	protected final Transaction parent;
+	/*
+	 * This orec identifies newly created objects by this transaction. We say
+	 * these objects are in captured memory corresponding to memory allocated
+	 * inside a transaction that cannot escape (i.e., is captured by) its
+	 * allocating transaction. Later and before performing an STM barrier we can
+	 * check if an object is in captured memory and in that case we can read or
+	 * update it in place avoiding the STM barrier.
+	 */
+	public final OwnershipRecord orecForNewObjects = new OwnershipRecord();
+
+	public Transaction(Transaction parent, int number) {
+		this.parent = parent;
+		this.number = number;
+		// register statistics (once per thread):
+		if (!tuningContext.get().isRegistered()) {
+			Controller.instance().registerContext(tuningContext.get());
+			// TODO: deal with nested txs
+		}
+	}
+
+	public Transaction(int number) {
+		this(null, number);
+	}
+
+	public Transaction(Transaction parent) {
+		this(parent, parent.getNumber());
+	}
+
+	public void start() {
+		// tuning: statistics
+		controller.tryRunTransaction(tuningContext.get());
+		tuningContext.get().getStatistics().incTransactionCount();
+		current.set(this);
+	}
+
+	protected Transaction getParent() {
+		return parent;
+	}
+
+	public int getNumber() {
+		return number;
+	}
+
+	protected void setNumber(int number) {
+		this.number = number;
+	}
+
+	public void abortTx() {
+		// tuning impl: statistics
+		tuningContext.get().getStatistics().incAbortCount();
+		controller.finishTransaction(tuningContext.get());
+		finishTx();
+	}
+
+	public void commitTx(boolean finishAlso) {
+		doCommit();
+
+		// tuning impl
+		controller.finishTransaction(tuningContext.get());
+		tuningContext.get().getStatistics().incCommitCount();
+		if (finishAlso) {
+			finishTx();
+		}
+	}
+
+	private void finishTx() {
+		finish();
+
+		current.set(this.getParent());
+	}
+
+	protected void finish() {
+		// intentionally empty
+	}
+
+	public SuspendedTransaction suspendTx() {
+		// remove the transaction from the thread
+		current.set(null);
+
+		TxContext newTxContext = new TxContext(this);
+		// create a new SuspendedTransaction holding the transaction and its
+		// context.
+		SuspendedTransaction suspendedTx = new SuspendedTransaction(this, newTxContext);
+		// enqueue the new TxContext to hold the transaction's required record
+		Transaction.allTxContexts.enqueue(newTxContext);
+		TxContext currentTxContext = context();
+		// the order is important! We must not let go of the required version,
+		// so we set it ahead before clearing it in
+		// the current context
+		newTxContext.oldestRequiredVersion = currentTxContext.oldestRequiredVersion;
+		currentTxContext.oldestRequiredVersion = null;
+
+		return suspendedTx;
+		// the currentTxContext is left to be reused by this thread
+	}
+
+	protected abstract Transaction commitAndBeginTx(boolean readOnly);
+
+	public abstract Transaction makeNestedTransaction(boolean readOnly);
+
+	public abstract <T> T getBoxValue(VBox<T> vbox);
+
+	public abstract <T> void setBoxValue(VBox<T> vbox, T value);
+
+	public abstract <T> T getPerTxValue(PerTxBox<T> box, T initial);
+
+	public abstract <T> void setPerTxValue(PerTxBox<T> box, T value);
+
+	public abstract <T> T getArrayValue(VArrayEntry<T> entry);
+
+	public abstract <T> void setArrayValue(VArrayEntry<T> entry, T value);
+
+	protected abstract void doCommit();
+
+	public abstract Transaction makeUnsafeMultithreaded();
+
+	public abstract Transaction makeParallelNestedTransaction(boolean readOnly);
+
+	public abstract boolean isWriteTransaction();
+
+	/*
+	 * A static method which return false if this *thread* executes top-level
+	 * transactions, and false otherwise.
+	 * 
+	 * Subclasses should "override" this method appropriately. Java does not
+	 * allow static abstract methods, so an exception is thrown to signal an
+	 * implementation error if no static method exists to shadow the base impl.
+	 * 
+	 * TODO find a better workaround.
+	 */
+	public static boolean isNested() {
+		throw new IllegalStateException(
+				"Transaction.isNested(): Base implementation method should not be invoked. Subclasses must implement a public static isNested() method that behaves accordingly.");
+	}
+
+	public static void transactionallyDo(TransactionalCommand command) {
+		while (true) {
+			Transaction tx = Transaction.begin();
+			try {
+				command.doIt();
+				tx.commit();
+				tx = null;
+				return;
+			} catch (CommitException ce) {
+				tx.abort();
+				tx = null;
+			} finally {
+				if (tx != null) {
+					tx.abort();
+				}
+			}
+		}
+	}
+
+	public static <T> T doIt(Callable<T> xaction) throws Exception {
+		return doIt(xaction, false);
+	}
+
+	public static <T> T doIt(Callable<T> xaction, boolean tryReadOnly) throws Exception {
+		T result = null;
+		while (true) {
+			Transaction.begin(tryReadOnly);
+			boolean finished = false;
+			try {
+				result = xaction.call();
+				Transaction.commit();
+				finished = true;
+				return result;
+			} catch (CommitException ce) {
+				Transaction.abort();
+				finished = true;
+			} catch (WriteOnReadException wore) {
+				Transaction.abort();
+				finished = true;
+				tryReadOnly = false;
+			} finally {
+				if (!finished) {
+					Transaction.abort();
+				}
+			}
+		}
+	}
 }

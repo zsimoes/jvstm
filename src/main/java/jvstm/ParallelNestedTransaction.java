@@ -140,9 +140,9 @@ public class ParallelNestedTransaction extends ReadWriteTransaction {
         }
 
         //tuning: statistics
-        threadStatistics.get().incAbortCount();
+        tuningContext.get().getStatistics().incAbortCount();
         Transaction.current.set(parent);
-        releaseTopLevelTransactionPermit();
+        controller.finishTransaction(tuningContext.get());
     }
 
     /* Removes the inplace writes of the transaction aborting if they 
@@ -550,8 +550,7 @@ public class ParallelNestedTransaction extends ReadWriteTransaction {
         return parentArrayReads;
     }
 
-	@Override
-	public boolean isNested() {
+	public static boolean isNested() {
 		return true;
 	}
 }

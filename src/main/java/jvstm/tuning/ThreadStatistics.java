@@ -1,27 +1,22 @@
 package jvstm.tuning;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
 public class ThreadStatistics {
 
-	private AtomicInteger transactionCount;
-	private AtomicInteger commitCount;
-	private AtomicInteger abortCount;
-	private long threadId;
-	private int nestingLevel;
+	private volatile int transactionCount;
+	private volatile int commitCount;
+	private volatile int abortCount;
+	private volatile long threadId;
+	private volatile int nestingLevel;
 	
 	public ThreadStatistics(long threadId, int nestingLevel) {
-		transactionCount = new AtomicInteger(0);
-		commitCount = new AtomicInteger(0);
-		abortCount = new AtomicInteger(0);
 		this.threadId = threadId;
 		this.nestingLevel = nestingLevel;
 	}
 	
 	public void reset() {
-		transactionCount.set(0);
-		commitCount.set(0);
-		abortCount.set(0);
+		transactionCount = 0;
+		commitCount = 0;
+		abortCount = 0;
 		nestingLevel = 0;
 	}
 	
@@ -34,9 +29,9 @@ public class ThreadStatistics {
 	//to do: use lock?
 	//does not cause memory consistency errors but is not thread-safe
 	public void addTo(ThreadStatistics stat) {
-		stat.transactionCount.addAndGet(this.transactionCount.get());
-		stat.commitCount.addAndGet(this.commitCount.get());
-		stat.abortCount.addAndGet(this.abortCount.get());
+		stat.transactionCount += this.transactionCount;
+		stat.commitCount += this.commitCount;
+		stat.abortCount += this.abortCount;
 	}
 	
 	public long getThreadId() {
@@ -52,33 +47,39 @@ public class ThreadStatistics {
 	}
 
 	public int getTransactionCount() {
-		return transactionCount.get();
+		return transactionCount;
 	}
 	public void setTransactionCount(int transactionCount) {
-		this.transactionCount.set(transactionCount);
+		this.transactionCount = transactionCount;
 	}
 	public void incTransactionCount() {
-		transactionCount.incrementAndGet();
+		transactionCount++;
 	}
 	
 	public int getCommitCount() {
-		return commitCount.get();
+		return commitCount;
 	}
 	public void setCommitCount(int commitCount) {
-		this.commitCount.set(commitCount);;
+		this.commitCount = commitCount;
 	}
 	public void incCommitCount() {
-		commitCount.incrementAndGet();
+		commitCount++;
 	}
 	
 	public int getAbortCount() {
-		return abortCount.get();
+		return abortCount;
 	}
 	public void setAbortCount(int abortCount) {
-		this.abortCount.set(abortCount);
+		this.abortCount = abortCount;
 	}
 	public void incAbortCount() {
-		abortCount.incrementAndGet();
+		abortCount++;
+	}
+
+	@Override
+	public String toString() {
+		return "ThreadStatistics [transactionCount=" + transactionCount + ", commitCount=" + commitCount
+				+ ", abortCount=" + abortCount + ", threadId=" + threadId + ", nestingLevel=" + nestingLevel + "]";
 	}
 	
 	
