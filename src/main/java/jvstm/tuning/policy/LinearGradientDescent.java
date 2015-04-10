@@ -49,8 +49,8 @@ public class LinearGradientDescent extends TuningPolicy {
 	}
 
 	private void init() {
-		maxNestedThreads = new AtomicInteger(1);
-		maxTopLevelThreads = new AtomicInteger(0);
+		maxNestedThreads = new AtomicInteger(8);
+		maxTopLevelThreads = new AtomicInteger(8);
 
 		topLevelWaitQueue = new ConcurrentLinkedQueue<TuningContext>();
 		nestedWaitQueue = new ConcurrentLinkedQueue<TuningContext>();
@@ -82,15 +82,14 @@ public class LinearGradientDescent extends TuningPolicy {
 
 			if (runCount < roundSize && firstRound) {
 				// skip the first round
-				System.err.println("Skipping round " + runCount);
 				runCount++;
 				return;
 			}
 
-			if (runCount == roundSize) {
+			if (runCount == roundSize && firstRound) {
 				// we've skipped some rounds to achieve the workload's natural
-				// size.
-				// Set the current state to this size, and explore from here on.
+				// size. Set the current state to this size, and explore from
+				// here on.
 				Pair<Integer, Integer> current = new Pair<Integer, Integer>(topLevelContexts.size(),
 						nestedContexts.size());
 				setCurrentPoint(current);
@@ -105,6 +104,7 @@ public class LinearGradientDescent extends TuningPolicy {
 			float tcr = GDSaveTCR();
 
 			if (runCount % roundSize == 0) {
+				//HERE save X and Y independently (independent comparisons and setX(), setY())
 				GDEndRound(tcr);
 			}
 
@@ -134,8 +134,7 @@ public class LinearGradientDescent extends TuningPolicy {
 			int deltaX = (incX ? deltas[0].first : deltas[2].first);
 			int deltaY = (incX ? deltas[0].second : deltas[2].second);
 			incX = !incX;
-			System.err.println("----> Stalled, increasing " + (incX ? "top-level" : "nested") + " threads; "
-					+ topLevelWaitQueue.size() + " toplevel waiting, " + nestedWaitQueue.size() + " nested waiting.");
+			System.err.println("----> Stalled, increasing " + (incX ? "top-level" : "nested") + " threads; " + topLevelWaitQueue.size() + " toplevel waiting, " + nestedWaitQueue.size() + " nested waiting.");
 			bestPoint.first = currentFixedPoint.first + deltaX;
 			bestPoint.second = currentFixedPoint.second + deltaY;
 		}
@@ -144,7 +143,7 @@ public class LinearGradientDescent extends TuningPolicy {
 		setCurrentPoint(bestPoint);
 		setCurrentFixedPoint(bestPoint);
 		setPreviousBestPoint(bestPoint);
-		
+
 		// Note: previously I wasn't clearing <bestTCR> to account fot the
 		// previous point's performance, but since this GD moves only one point
 		// in any direction we'll eventually scan the previous point again, and
@@ -154,14 +153,13 @@ public class LinearGradientDescent extends TuningPolicy {
 		resetData();
 	}
 
-	private boolean GDNextRun() {
+	protected boolean GDNextRun() {
 		// set the current point and max threads accordingly:
 		int newTopLevel = currentFixedPoint.first + deltas[runCount].first;
 		int newNested = currentFixedPoint.second + deltas[runCount].second;
-		if (newTopLevel < 0 || newNested < 0) {
+		if (newTopLevel < 1 || newNested < 1) {
 			// this move would take us to a negative value. Return false to
 			// ensure this run is repeated with other point.
-			System.err.println("\t>> Negative point coordinate {" + newTopLevel + "," + newNested + "} , retrying");
 			return false;
 		}
 		System.err.println("\t>>new run point: {" + newTopLevel + "," + newNested + "}");

@@ -1,10 +1,10 @@
 package jvstm.tuning;
 
-import java.util.HashMap;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import jvstm.tuning.policy.DiagonalGradientDescent;
+import jvstm.tuning.policy.IndependentGradientDescent;
+import jvstm.tuning.policy.LinearGradientDescent;
 import jvstm.tuning.policy.TuningPolicy;
 
 public class Controller implements Runnable {
@@ -15,9 +15,7 @@ public class Controller implements Runnable {
 
 	// Region singleton
 	private Controller() {
-		// HERE introduce GD
-		policy = new DiagonalGradientDescent();
-
+		policy = new IndependentGradientDescent();
 	}
 
 	private static Controller instance;

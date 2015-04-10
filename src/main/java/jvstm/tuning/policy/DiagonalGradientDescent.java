@@ -4,6 +4,9 @@ import jvstm.util.Pair;
 
 public class DiagonalGradientDescent extends LinearGradientDescent {
 
+	// This class has the same behaviour as LinearGD, but different deltas.
+	// LinearGD only takes horizontal/vertical jumps, while this one searches in
+	// all directions
 	static {
 		deltas = new Pair[8];
 		deltas[0] = new Pair<Integer, Integer>(1, 0);
@@ -17,6 +20,5 @@ public class DiagonalGradientDescent extends LinearGradientDescent {
 
 		roundSize = deltas.length;
 	}
-	
 
 }
