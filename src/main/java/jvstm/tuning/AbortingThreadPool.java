@@ -10,51 +10,48 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 
-public class AbortingThreadPool extends ThreadPoolExecutor {
+public class AbortingThreadPool extends ThreadPoolExecutor
+{
 
-	public static ExecutorService newAbortingThreadPool(int nThreads, ThreadFactory threadFactory) {
-		return new AbortingThreadPool(nThreads, nThreads,
-                0L, TimeUnit.MILLISECONDS,
-                new LinkedBlockingQueue<Runnable>(),
-                threadFactory);
+	public static ExecutorService newAbortingThreadPool(int nThreads, ThreadFactory threadFactory)
+	{
+		return new AbortingThreadPool(nThreads, nThreads, 0L, TimeUnit.MILLISECONDS,
+				new LinkedBlockingQueue<Runnable>(), threadFactory);
 	}
 
-	
-	public AbortingThreadPool(int corePoolSize, int maximumPoolSize,
-			long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue) {
+	public AbortingThreadPool(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit,
+			BlockingQueue<Runnable> workQueue)
+	{
 		super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue);
 	}
 
-	public AbortingThreadPool(int corePoolSize, int maximumPoolSize,
-			long keepAliveTime, TimeUnit unit,
-			BlockingQueue<Runnable> workQueue, RejectedExecutionHandler handler) {
+	public AbortingThreadPool(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit,
+			BlockingQueue<Runnable> workQueue, RejectedExecutionHandler handler)
+	{
 		super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, handler);
 	}
 
-	public AbortingThreadPool(int corePoolSize, int maximumPoolSize,
-			long keepAliveTime, TimeUnit unit,
-			BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory,
-			RejectedExecutionHandler handler) {
-		super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue,
-				threadFactory, handler);
+	public AbortingThreadPool(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit,
+			BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory, RejectedExecutionHandler handler)
+	{
+		super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory, handler);
 	}
 
-	public AbortingThreadPool(int corePoolSize, int maximumPoolSize,
-			long keepAliveTime, TimeUnit unit,
-			BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory) {
-		super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue,
-				threadFactory);
+	public AbortingThreadPool(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit,
+			BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory)
+	{
+		super(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory);
 	}
-
-
 
 	/**
 	 * A runtime exception used to prematurely terminate threads in this pool.
 	 */
-	static class ShutdownException extends RuntimeException {
+	static class ShutdownException extends RuntimeException
+	{
 		private static final long serialVersionUID = 1L;
 
-		ShutdownException(String message) {
+		ShutdownException(String message)
+		{
 			super(message);
 		}
 	}
@@ -63,7 +60,8 @@ public class AbortingThreadPool extends ThreadPoolExecutor {
 	 * This uncaught exception handler is used only as threads are entered into
 	 * their shutdown state.
 	 */
-	static class ShutdownHandler implements UncaughtExceptionHandler {
+	static class ShutdownHandler implements UncaughtExceptionHandler
+	{
 		private UncaughtExceptionHandler handler;
 
 		/**
@@ -73,7 +71,8 @@ public class AbortingThreadPool extends ThreadPoolExecutor {
 		 *            The original handler to delegate non-shutdown exceptions
 		 *            to.
 		 */
-		ShutdownHandler(UncaughtExceptionHandler handler) {
+		ShutdownHandler(UncaughtExceptionHandler handler)
+		{
 			this.handler = handler;
 		}
 
@@ -86,13 +85,16 @@ public class AbortingThreadPool extends ThreadPoolExecutor {
 		 * uncaught exception handler).
 		 * </p>
 		 */
-		public void uncaughtException(Thread thread, Throwable throwable) {
-			if (!(throwable instanceof ShutdownException)) {
+		public void uncaughtException(Thread thread, Throwable throwable)
+		{
+			if (!(throwable instanceof ShutdownException))
+			{
 				/*
 				 * Use the original exception handler if one is available,
 				 * otherwise use the group exception handler.
 				 */
-				if (handler != null) {
+				if (handler != null)
+				{
 					handler.uncaughtException(thread, throwable);
 				}
 			}
@@ -100,18 +102,19 @@ public class AbortingThreadPool extends ThreadPoolExecutor {
 	}
 
 	private Semaphore terminations = new Semaphore(0, true);
-	
+
 	@Override
-	protected void beforeExecute(final Thread thread, final Runnable job) {
-		if (terminations.tryAcquire()) {
+	protected void beforeExecute(final Thread thread, final Runnable job)
+	{
+		if (terminations.tryAcquire())
+		{
 			/*
 			 * Replace this item in the queue so it may be executed by another
 			 * thread
 			 */
 			getQueue().add(job);
 
-			thread.setUncaughtExceptionHandler(new ShutdownHandler(thread
-					.getUncaughtExceptionHandler()));
+			thread.setUncaughtExceptionHandler(new ShutdownHandler(thread.getUncaughtExceptionHandler()));
 
 			/*
 			 * Throwing a runtime exception is the only way to prematurely cause
@@ -121,12 +124,14 @@ public class AbortingThreadPool extends ThreadPoolExecutor {
 		}
 	}
 
-	public void setCorePoolSize(final int size) {
+	public void setCorePoolSize(final int size)
+	{
 		int delta = getActiveCount() - size;
 
 		super.setCorePoolSize(size);
 
-		if (delta > 0) {
+		if (delta > 0)
+		{
 			terminations.release(delta);
 		}
 	}

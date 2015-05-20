@@ -101,7 +101,8 @@ public class ReadTransaction extends Transaction {
         return false;
     }
 
-	public static boolean isNested() {
+    @Override
+	public boolean isNested() {
 		return false;
 	}
 }

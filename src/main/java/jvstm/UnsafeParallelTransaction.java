@@ -235,7 +235,8 @@ public class UnsafeParallelTransaction extends ParallelNestedTransaction {
         throw new Error("Unsafe Parallel Transaction cannot use 'commit and begin'");
     }
     
-    public static boolean isNested() {
+    @Override
+    public boolean isNested() {
     	return true;
     }
 

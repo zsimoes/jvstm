@@ -83,7 +83,7 @@ public abstract class Transaction {
 	protected static ThreadLocal<TuningContext> tuningContext = new ThreadLocal<TuningContext>() {
 		@Override
 		protected TuningContext initialValue() {
-			return Controller.instance().registerThread(Thread.currentThread().getId(), false);
+			return Controller.instance().registerThread(Thread.currentThread().getId());
 		}
 	};
 	
@@ -542,7 +542,7 @@ public abstract class Transaction {
 
 	public void start() {
 		// tuning: statistics
-		controller.tryRunTransaction(tuningContext.get());
+		controller.tryRunTransaction(tuningContext.get(), isNested());
 		tuningContext.get().getStatistics().incTransactionCount();
 		current.set(this);
 	}
@@ -642,10 +642,7 @@ public abstract class Transaction {
 	 * 
 	 * TODO find a better workaround.
 	 */
-	public static boolean isNested() {
-		throw new IllegalStateException(
-				"Transaction.isNested(): Base implementation method should not be invoked. Subclasses must implement a public static isNested() method that behaves accordingly.");
-	}
+	public abstract boolean isNested();
 
 	public static void transactionallyDo(TransactionalCommand command) {
 		while (true) {

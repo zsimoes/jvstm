@@ -1,8 +1,15 @@
 package jvstm.tuning.policy;
 
+import jvstm.tuning.Controller;
 import jvstm.util.Pair;
 
-public class DiagonalGradientDescent extends LinearGradientDescent {
+public class DiagonalGradientDescent extends LinearGradientDescent2 {
+
+	public DiagonalGradientDescent(Controller controller)
+	{
+		super(controller);
+		// TODO Auto-generated constructor stub
+	}
 
 	// This class has the same behaviour as LinearGD, but different deltas.
 	// LinearGD only takes horizontal/vertical jumps, while this one searches in

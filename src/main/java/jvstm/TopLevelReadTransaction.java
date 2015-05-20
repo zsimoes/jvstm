@@ -52,7 +52,8 @@ public class TopLevelReadTransaction extends ReadTransaction {
         }
     }
     
-    public static boolean isNested() {
+    @Override
+    public boolean isNested() {
 		return false;
 	}
     

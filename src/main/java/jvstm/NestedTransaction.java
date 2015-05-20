@@ -254,7 +254,8 @@ public class NestedTransaction extends ReadWriteTransaction {
         }
     }
 
-	public static boolean isNested() {
+    @Override
+	public boolean isNested() {
 		return true;
 	}
 }

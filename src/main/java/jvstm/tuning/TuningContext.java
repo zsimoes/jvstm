@@ -3,7 +3,8 @@ package jvstm.tuning;
 /*
  * This class serves as a container for statistics and tunable state for each transactional thread
  */
-public class TuningContext {
+public class TuningContext
+{
 
 	boolean registered;
 	private long threadId;
@@ -11,7 +12,8 @@ public class TuningContext {
 	private ThreadStatistics statistics;
 	private Tunable threadState;
 
-	public TuningContext(long threadId, int nestingLevel) {
+	public TuningContext(long threadId, int nestingLevel)
+	{
 		registered = false;
 		this.threadId = threadId;
 		this.nestingLevel = nestingLevel;
@@ -19,54 +21,63 @@ public class TuningContext {
 		this.threadState = new ThreadState(ThreadState.RUNNABLE);
 	}
 
-	public TuningContext(long threadId, int nestingLevel, Tunable state) {
+	public TuningContext(long threadId, int nestingLevel, Tunable state)
+	{
 		this(threadId, nestingLevel);
 		this.threadState = state;
 	}
 
-	public TuningContext(long threadId, int nestingLevel, Tunable state, ThreadStatistics statistics) {
+	public TuningContext(long threadId, int nestingLevel, Tunable state, ThreadStatistics statistics)
+	{
 		this(threadId, nestingLevel, state);
 		this.statistics = statistics;
 	}
 
-	public ThreadStatistics getStatistics() {
+	public ThreadStatistics getStatistics()
+	{
 		return statistics;
 	}
 
-	public void setStatistics(ThreadStatistics statistics) {
+	public void setStatistics(ThreadStatistics statistics)
+	{
 		this.statistics = statistics;
 	}
 
-	public Tunable getThreadState() {
+	public Tunable getThreadState()
+	{
 		return threadState;
 	}
 
-	public void setThreadState(Tunable threadState) {
+	public void setThreadState(Tunable threadState)
+	{
 		this.threadState = threadState;
 	}
 
-	public boolean isNested() {
+	public boolean isNested()
+	{
 		return (nestingLevel > 0);
 	}
 
-	public Long getThreadId() {
+	public Long getThreadId()
+	{
 		return threadId;
 	}
-	
-	public boolean isRegistered() {
+
+	public boolean isRegistered()
+	{
 		return registered;
 	}
-	
-	public void setRegistered(boolean registered) {
+
+	public void setRegistered(boolean registered)
+	{
 		this.registered = registered;
 	}
 
 	@Override
-	public String toString() {
+	public String toString()
+	{
 		return "TuningContext [registered=" + registered + ", threadId=" + threadId + ", nestingLevel=" + nestingLevel
 				+ ", statistics=" + statistics + ", threadState=" + threadState + "]";
 	}
-	
-	
 
 }

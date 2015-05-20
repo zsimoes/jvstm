@@ -550,7 +550,8 @@ public class ParallelNestedTransaction extends ReadWriteTransaction {
         return parentArrayReads;
     }
 
-	public static boolean isNested() {
+    @Override
+	public boolean isNested() {
 		return true;
 	}
 }

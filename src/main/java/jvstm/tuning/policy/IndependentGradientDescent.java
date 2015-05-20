@@ -1,9 +1,15 @@
 package jvstm.tuning.policy;
 
-import jvstm.tuning.TuningContext;
-import jvstm.util.Pair;
+import jvstm.tuning.Controller;
 
-public class IndependentGradientDescent extends LinearGradientDescent {
+
+public class IndependentGradientDescent extends LinearGradientDescent2 {
+
+	public IndependentGradientDescent(Controller controller)
+	{
+		super(controller);
+		// TODO Auto-generated constructor stub
+	}
 
 	public static int[] deltas;
 	
@@ -14,6 +20,8 @@ public class IndependentGradientDescent extends LinearGradientDescent {
 		
 		roundSize = deltas.length;
 	}
+	
+	protected int bestX, bestY;
 
 	@Override
 	protected boolean GDNextRun() {
@@ -25,10 +33,34 @@ public class IndependentGradientDescent extends LinearGradientDescent {
 			// ensure this run is repeated with other point.
 			return false;
 		}
-		System.err.println("\t>>new run point: {" + newTopLevel + "," + newNested + "}");
 		setCurrentPoint(newTopLevel, newNested);
 		resumeWaitingThreads();
 		return true;
+	}
+	
+	@Override
+	protected float GDSaveTCR() {
+		float tcr = getMeasurement(true);
+		if (tcr > bestTCR) {
+			bestX = currentPoint.first;
+			bestY = currentPoint.second;
+			bestTCR = tcr;
+		}
+
+		return tcr;
+	}
+	
+	@Override
+	protected void GDEndRound(float tcr) {
+		// set the current point and set max threads accordingly:
+		setCurrentPoint(bestX, bestY);
+		setCurrentFixedPoint(bestPoint);
+		setPreviousBestPoint(bestPoint);
+		
+		System.err.println("Point: " + currentPoint);
+
+		// reset count and bestTCR:
+		resetData();
 	}
 
 }

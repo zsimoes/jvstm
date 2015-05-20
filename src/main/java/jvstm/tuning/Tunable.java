@@ -1,6 +1,7 @@
 package jvstm.tuning;
 
-public interface Tunable {
+public interface Tunable
+{
 
 	public int getState();
 
@@ -8,10 +9,12 @@ public interface Tunable {
 
 	public void finish();
 
-	public void setRunnable();
+	public void setRunnable(boolean notify);
+
+	public void notifyTunable();
 
 	public void setWaiting();
-	
+
 	public boolean isWaiting();
 
 }

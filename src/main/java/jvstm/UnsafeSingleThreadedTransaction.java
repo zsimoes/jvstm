@@ -178,7 +178,8 @@ public class UnsafeSingleThreadedTransaction extends Transaction {
         return true;
     }
 
-	public static boolean isNested() {
+    @Override
+	public boolean isNested() {
 		return false;
 	}
 }
