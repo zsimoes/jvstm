@@ -3,7 +3,7 @@ package jvstm.tuning.policy;
 import jvstm.tuning.Controller;
 
 
-public class IndependentGradientDescent extends LinearGradientDescent2 {
+public class IndependentGradientDescent extends LinearGradientDescent3 {
 
 	public IndependentGradientDescent(Controller controller)
 	{
@@ -34,12 +34,11 @@ public class IndependentGradientDescent extends LinearGradientDescent2 {
 			return false;
 		}
 		setCurrentPoint(newTopLevel, newNested);
-		resumeWaitingThreads();
 		return true;
 	}
 	
 	@Override
-	protected float GDSaveTCR() {
+	protected float GDSaveMeasurement() {
 		float tcr = getMeasurement(true);
 		if (tcr > bestTCR) {
 			bestX = currentPoint.first;
@@ -51,16 +50,17 @@ public class IndependentGradientDescent extends LinearGradientDescent2 {
 	}
 	
 	@Override
-	protected void GDEndRound(float tcr) {
+	protected float GDEndRound(float tcr) {
 		// set the current point and set max threads accordingly:
 		setCurrentPoint(bestX, bestY);
 		setCurrentFixedPoint(bestPoint);
 		setPreviousBestPoint(bestPoint);
 		
-		System.err.println("Point: " + currentPoint);
+		float best = bestTCR;
 
 		// reset count and bestTCR:
 		resetData();
+		return best;
 	}
 
 }

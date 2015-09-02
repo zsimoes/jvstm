@@ -142,7 +142,7 @@ public class ParallelNestedTransaction extends ReadWriteTransaction {
         //tuning: statistics
         tuningContext.get().getStatistics().incAbortCount();
         Transaction.current.set(parent);
-        controller.finishTransaction(tuningContext.get());
+        controller.finishTransaction(this, isNested());
     }
 
     /* Removes the inplace writes of the transaction aborting if they 

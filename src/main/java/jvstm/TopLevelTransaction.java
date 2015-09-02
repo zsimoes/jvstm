@@ -52,6 +52,11 @@ public class TopLevelTransaction extends ReadWriteTransaction {
     public ActiveTransactionsRecord getCommitTxRecord() {
         return this.commitTxRecord;
     }
+    
+    @Override
+    public void start() {
+    	super.start();
+    }
 
     @Override
     public Transaction makeUnsafeMultithreaded() {

@@ -78,7 +78,7 @@ public class UnsafeParallelTransaction extends ParallelNestedTransaction {
         boxesWrittenInPlace = null;
         Transaction.current.set(null);
         
-        controller.finishTransaction(tuningContext.get());
+        controller.finishTransaction(this, this.isNested());
     }
 
     @Override

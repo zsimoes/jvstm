@@ -3,7 +3,7 @@ package jvstm.tuning.policy;
 import jvstm.tuning.Controller;
 import jvstm.util.Pair;
 
-public class DiagonalGradientDescent extends LinearGradientDescent2 {
+public class DiagonalGradientDescent extends LinearGradientDescent3 {
 
 	public DiagonalGradientDescent(Controller controller)
 	{

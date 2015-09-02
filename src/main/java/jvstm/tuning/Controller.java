@@ -1,34 +1,42 @@
 package jvstm.tuning;
 
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 
-import jvstm.tuning.policy.CurveBinder;
+import jvstm.Transaction;
+import jvstm.tuning.policy.LinearGradientDescent4;
+import jvstm.tuning.policy.PointBinder;
 import jvstm.tuning.policy.DefaultPolicy;
 import jvstm.tuning.policy.DiagonalGradientDescent;
 import jvstm.tuning.policy.IndependentGradientDescent;
 import jvstm.tuning.policy.InterleavedGradientDescent;
-import jvstm.tuning.policy.LinearGradientDescent;
-import jvstm.tuning.policy.LinearGradientDescent2;
 import jvstm.tuning.policy.LinearGradientDescent3;
 import jvstm.tuning.policy.ThroughtputMeasurementPolicy;
 import jvstm.tuning.policy.TuningPolicy;
+import jvstm.util.Pair;
 
 public class Controller implements Runnable
 {
 
 	// Region tuning fields
 	private TuningPolicy policy;
-	private CurveBinder curveBinder;
+	private PointBinder pointBinder;
+
+	private static boolean enabled = true;
 
 	protected Map<Long, TuningContext> contexts;
+	public Set<Transaction> started;
 
-	private final int intervalMillis = 100;
+	private final int intervalMillis;
 	private StatisticsCollector statisticsCollector;
 	private static Map<String, Class<? extends TuningPolicy>> policies;
-	private static Map<String, Class<? extends TuningPolicy>> tuningMechanisms;
+	private static TuningPoint initialConfig = new TuningPoint();
+
+	// private static Map<String, Class<? extends TuningPolicy>>
+	// tuningMechanisms;
 
 	// EndRegion
 
@@ -36,10 +44,19 @@ public class Controller implements Runnable
 	private Controller()
 	{
 		String outputPath = Util.getSystemProperty("output");
+		try
+		{
+			String intervalProp = Util.getSystemProperty("interval");
+			intervalMillis = Integer.parseInt(intervalProp);
+		} catch (Exception e)
+		{
+			throw new RuntimeException("Invalid policy interval value. Use \"java -Dinterval=<milliseconds> ...\"");
+		}
 
 		statisticsCollector = new StatisticsCollector(outputPath, intervalMillis);
 
 		contexts = new ConcurrentHashMap<Long, TuningContext>();
+		started = new HashSet<Transaction>();
 
 		String m = Util.getSystemProperty("maxThreads");
 		if (m == null)
@@ -55,7 +72,30 @@ public class Controller implements Runnable
 			throw new RuntimeException("Invalid maxThreads value. Use \"java -DmaxThreads=<max_threads> ...\"");
 		}
 
-		this.curveBinder = new CurveBinder(maxThreads);
+		this.pointBinder = new PointBinder(maxThreads);
+
+		m = Util.getSystemProperty("initialConfig");
+		if (m == null)
+		{
+			initialConfig = null;
+		} else
+		{
+			String[] mm = m.split(",");
+			if (mm.length != 2)
+			{
+				throw new RuntimeException(
+						"Invalid initialConfig value. Use \"java -DinitialConfig=<max_topLevel>,<max_nested> ...\"");
+			}
+			try
+			{
+				initialConfig.first = Integer.parseInt(mm[0]);
+				initialConfig.second = Integer.parseInt(mm[1]);
+			} catch (NumberFormatException n)
+			{
+				throw new RuntimeException(
+						"Invalid initialConfig value. Use \"java -DinitialConfig=<max_topLevel>,<max_nested> ...\"");
+			}
+		}
 
 		selectPolicy();
 	}
@@ -64,7 +104,7 @@ public class Controller implements Runnable
 	{
 
 		policies = new HashMap<String, Class<? extends TuningPolicy>>();
-		policies.put("LinearGD", LinearGradientDescent3.class);
+		policies.put("LinearGD", LinearGradientDescent4.class);
 		policies.put("DiagonalGD", DiagonalGradientDescent.class);
 		policies.put("IndependentGD", IndependentGradientDescent.class);
 		policies.put("InterleavedGD", InterleavedGradientDescent.class);
@@ -72,16 +112,28 @@ public class Controller implements Runnable
 		policies.put("Throughput", ThroughtputMeasurementPolicy.class);
 		policies.put("Default", DefaultPolicy.class);
 
-		tuningMechanisms = new HashMap<String, Class<? extends TuningPolicy>>();
+		// tuningMechanisms = new HashMap<String, Class<? extends
+		// TuningPolicy>>();
 
-		tuningMechanisms.put("Semaphore", LinearGradientDescent3.class);
-		tuningMechanisms.put("WaitingQueue", LinearGradientDescent2.class);
-		tuningMechanisms.put("ProducerConsumer", LinearGradientDescent.class);
+		// tuningMechanisms.put("Semaphore", LinearGradientDescent3.class);
+		// tuningMechanisms.put("WaitingQueue", LinearGradientDescent2.class);
+		// tuningMechanisms.put("ProducerConsumer",
+		// LinearGradientDescent.class);
 	}
 
 	public StatisticsCollector getStatisticsCollector()
 	{
 		return statisticsCollector;
+	}
+
+	public static boolean isEnabled()
+	{
+		return enabled;
+	}
+
+	public static void setEnabled(boolean isEnabled)
+	{
+		enabled = isEnabled;
 	}
 
 	private void selectPolicy()
@@ -93,28 +145,22 @@ public class Controller implements Runnable
 			if (pol == null)
 			{
 				System.err.println("Policy System Property not found - defaulting to LinearGD.");
-				policy = new LinearGradientDescent2(this);
+				policy = new LinearGradientDescent4(this);
 				return;
-			} else if (pol.equals("LinearGD"))
-			{
-				// select appropriate tuning mechanism. If absent, use normal
-				// LinearGD
-				String mechanism = Util.getSystemProperty("tuningMechanism");
-				if (mechanism != null)
-				{
-					Class<? extends TuningPolicy> mec = tuningMechanisms.get(mechanism);
-					if (mec != null)
-					{
-						policy = mec.getConstructor(Controller.class).newInstance(this);
-						System.err.println("Selected tuning mechanism: " + mechanism.getClass().getName());
-					} else
-					{
-						throw new RuntimeException("jvstm.tuning.Controller (init) - Invalid tuning mechanism: "
-								+ mechanism + "." + System.getProperty("line.separator") + "Available policies are: "
-								+ tuningMechanisms.keySet());
-					}
-				}
-			}
+			} /*
+			 * else if (pol.equals("LinearGD")) { // select appropriate tuning
+			 * mechanism. If absent, use normal // LinearGD String mechanism =
+			 * Util.getSystemProperty("tuningMechanism"); if (mechanism != null)
+			 * { Class<? extends TuningPolicy> mec =
+			 * tuningMechanisms.get(mechanism); if (mec != null) { policy =
+			 * mec.getConstructor(Controller.class).newInstance(this);
+			 * System.err.println("Selected tuning mechanism: " +
+			 * mechanism.getClass().getName()); } else { throw new
+			 * RuntimeException
+			 * ("jvstm.tuning.Controller (init) - Invalid tuning mechanism: " +
+			 * mechanism + "." + System.getProperty("line.separator") +
+			 * "Available policies are: " + tuningMechanisms.keySet()); } } }
+			 */
 
 			Class<? extends TuningPolicy> c = policies.get(pol);
 			if (c == null)
@@ -138,24 +184,29 @@ public class Controller implements Runnable
 			System.err.println("Exception selecting policy: " + e.getMessage());
 			throw new RuntimeException(e);
 		}
-
 	}
 
-	public CurveBinder getCurveBinder()
+	public PointBinder getPointBinder()
 	{
-		return curveBinder;
+		return pointBinder;
 	}
 
-	private static Controller instance;
+	public TuningPolicy getPolicy()
+	{
+		return policy;
+	}
+
 	private static boolean running = false;
+
+	// Ensure instance is initialized only once.
+	private static class InstanceHolder
+	{
+		private static final Controller instance = new Controller();
+	}
 
 	public static Controller instance()
 	{
-		if (instance == null)
-		{
-			instance = new Controller();
-		}
-		return instance;
+		return InstanceHolder.instance;
 	}
 
 	public static boolean isRunning()
@@ -191,17 +242,12 @@ public class Controller implements Runnable
 			try
 			{
 				Thread.sleep(intervalMillis);
-				policy.run(true);
-
-				float throughput = policy.getThroughput(true);
-				int topLevel = policy.getMaxTopLevelThreads();
-				int nested = policy.getMaxNestedThreads();
-
-				statisticsCollector.recordThroughput(throughput);
-				statisticsCollector.recordTuningPoint(topLevel, nested);
-				// System.err.println("Recorded throughput and tuning path: ");
-				// System.err.println("\t" + throughput + "\t(" + topLevel + ","
-				// + nested + ")");
+				if (enabled)
+				{
+					policy.run(true);
+				} else {
+					System.err.println("Controller disabled");
+				}
 			} catch (InterruptedException e)
 			{
 			}
@@ -219,13 +265,51 @@ public class Controller implements Runnable
 		controller.start();
 	}
 
-	public void finishTransaction(TuningContext t)
+	public static HashMap<Integer, Pair<String, TuningPoint>> starts = new HashMap<Integer, Pair<String, TuningPoint>>();
+	public static volatile int i = 0;
+	public final int DEBUGSTARTSTHRESHOLD = -1;
+
+	public void finishTransaction(Transaction t, boolean isNested)
 	{
-		policy.finishTransaction(t);
+		if (!isNested && starts.containsKey(t.hashCode()))
+		{
+			starts.get(t.hashCode()).second.second++;
+		}
+		policy.finishTransaction(t, isNested);
 	}
 
-	public void tryRunTransaction(TuningContext t, boolean isNested)
+	@SuppressWarnings("unused")
+	public void tryRunTransaction(Transaction t, boolean isNested)
 	{
+		if (started.contains(t))
+		{
+			// System.out.println("REPLAY - " + t.getClass().getName());
+			return;
+		}
+		started.add(t);
+
+		// debug begins and finishes
+		if (!isNested && DEBUGSTARTSTHRESHOLD > 0)
+		{
+			if (!starts.containsKey(t.hashCode()))
+			{
+				Pair<String, TuningPoint> p = new Pair<String, TuningPoint>(Transaction.current().getClass().getName(),
+						new TuningPoint(0, 0));
+				starts.put(t.hashCode(), p);
+			}
+			starts.get(t.hashCode()).second.first++;
+		}
+		if (++i > DEBUGSTARTSTHRESHOLD)
+		{
+			for (Pair<String, TuningPoint> val : starts.values())
+			{
+				TuningPoint p = val.second;
+				if (p.first != p.second)
+				{
+					System.out.println(val);
+				}
+			}
+		}
 		policy.tryRunTransaction(t, isNested);
 	}
 
@@ -242,6 +326,11 @@ public class Controller implements Runnable
 	public Map<Long, TuningContext> getContexts()
 	{
 		return contexts;
+	}
+
+	public static TuningPoint getInitialConfiguration()
+	{
+		return initialConfig;
 	}
 
 	// EndRegion

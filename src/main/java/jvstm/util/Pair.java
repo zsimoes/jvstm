@@ -57,6 +57,6 @@ public class Pair<E1,E2> {
     
     @Override
     public String toString() {
-    	return "Point[" + first + "," + second + "]";
+    	return "Pair[" + first + "," + second + "]";
     }
 }

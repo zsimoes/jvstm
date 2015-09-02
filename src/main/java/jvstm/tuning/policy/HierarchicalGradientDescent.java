@@ -1,5 +1,6 @@
 package jvstm.tuning.policy;
 
+import jvstm.Transaction;
 import jvstm.tuning.Controller;
 import jvstm.tuning.Tunable;
 import jvstm.tuning.TuningContext;
@@ -31,13 +32,13 @@ public class HierarchicalGradientDescent extends TuningPolicy {
 	}
 
 	@Override
-	public void finishTransaction(TuningContext t) {
+	public void finishTransaction(Transaction t, boolean nested) {
 		// TODO Auto-generated method stub
 
 	}
 
 	@Override
-	public void tryRunTransaction(TuningContext t, boolean nested) {
+	public void tryRunTransaction(Transaction t, boolean nested) {
 		// TODO Auto-generated method stub
 
 	}

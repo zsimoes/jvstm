@@ -49,7 +49,6 @@ public class InterleavedGradientDescent extends IndependentGradientDescent
 			return false;
 		}
 		setCurrentPoint(newTopLevel, newNested);
-		resumeWaitingThreads();
 		return true;
 	}
 

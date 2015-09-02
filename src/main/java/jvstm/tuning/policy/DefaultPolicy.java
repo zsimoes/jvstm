@@ -1,22 +1,12 @@
 package jvstm.tuning.policy;
 
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.util.Map;
-import java.util.Queue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import jvstm.Transaction;
 import jvstm.tuning.AdjustableSemaphore;
 import jvstm.tuning.Controller;
 import jvstm.tuning.ThreadState;
 import jvstm.tuning.Tunable;
-import jvstm.tuning.TuningContext;
-import jvstm.util.Pair;
 
 public class DefaultPolicy extends TuningPolicy
 {
@@ -25,21 +15,22 @@ public class DefaultPolicy extends TuningPolicy
 	{
 		super(controller);
 		init();
+		pointBinder.setMaximum(48);
 		// TODO Auto-generated constructor stub
 	}
 
 	protected int runCount;
 	private int interval;
-	
-	protected AdjustableSemaphore topLevelSemaphore;
-	protected AdjustableSemaphore nestedSemaphore;
+
+	public AdjustableSemaphore topLevelSemaphore;
+	public AdjustableSemaphore nestedSemaphore;
 
 	private void init()
 	{
-		maxTopLevelThreads = new AtomicInteger(24);
-		maxNestedThreads = new AtomicInteger(24);
+		maxTopLevelThreads = new AtomicInteger(4);
+		maxNestedThreads = new AtomicInteger(12);
 		resetData();
-		
+
 		topLevelSemaphore = new AdjustableSemaphore(maxTopLevelThreads.get());
 		nestedSemaphore = new AdjustableSemaphore(maxNestedThreads.get());
 	}
@@ -59,7 +50,8 @@ public class DefaultPolicy extends TuningPolicy
 	@Override
 	public void run(boolean mergePerThreadStatistics)
 	{
-		System.err.println("\tPOLC - Waiting: " + topLevelSemaphore.getQueueLength() + " , " + nestedSemaphore.getQueueLength());
+		////System.err.println("\tPOLC - Waiting: " + topLevelSemaphore.getQueueLength() + " , "
+				//+ nestedSemaphore.getQueueLength() + "(available: " + nestedSemaphore.availablePermits() + ")");
 		runCount++;
 	}
 
@@ -68,11 +60,11 @@ public class DefaultPolicy extends TuningPolicy
 	{
 		return new ThreadState(ThreadState.RUNNABLE);
 	}
-	
+
 	@Override
-	public void finishTransaction(TuningContext t)
+	public void finishTransaction(Transaction t, boolean nested)
 	{
-		if (t.isNested())
+		if (nested)
 		{
 			nestedSemaphore.release();
 			currentNestedThreads.decrementAndGet();
@@ -81,16 +73,15 @@ public class DefaultPolicy extends TuningPolicy
 			topLevelSemaphore.release();
 			currentTopLevelThreads.decrementAndGet();
 		}
-		t.getThreadState().finish();
-		t.getThreadState().setRunnable(false);
+		t.getTuningContext().getThreadState().finish();
+		t.getTuningContext().getThreadState().setRunnable(false);
 	}
 
 	@Override
-	public void tryRunTransaction(TuningContext t, boolean nested)
+	public void tryRunTransaction(Transaction t, boolean nested)
 	{
 		if (nested)
 		{
-			System.err.println("nested");
 			nestedSemaphore.acquireUninterruptibly();
 			currentNestedThreads.incrementAndGet();
 		} else
@@ -98,8 +89,7 @@ public class DefaultPolicy extends TuningPolicy
 			topLevelSemaphore.acquireUninterruptibly();
 			currentTopLevelThreads.incrementAndGet();
 		}
-		t.getThreadState().tryRun();
+		t.getTuningContext().getThreadState().tryRun();
 	}
 
-	
 }

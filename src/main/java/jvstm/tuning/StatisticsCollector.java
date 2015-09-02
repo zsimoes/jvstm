@@ -5,6 +5,9 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.Writer;
 
+import jvstm.tuning.policy.DefaultPolicy;
+import jvstm.util.Pair;
+
 public class StatisticsCollector
 {
 
@@ -21,7 +24,6 @@ public class StatisticsCollector
 
 	public StatisticsCollector(String dataOutputFile, int tuningInterval)
 	{
-		super();
 		this.tuningInterval = tuningInterval;
 		// expected output file name format:
 		String format = "<BASE_DIR>/<BENCHMARK_OUTPUT_FOLDER>/<JVSTM_BASENAME>-<POLICY>/<NAME>.data-t<NUMTHREADS>";
@@ -31,29 +33,34 @@ public class StatisticsCollector
 		if (dataOutputFile == null)
 		{
 			disabled = true;
+			System.err.println("Statistics Collector Disabled");
 			return;
 			// throw new
 			// RuntimeException("Invalid <output> system property. Use \"java -Doutput=<outputPath> (...)\"");
 		} else
 		{
 
-			String[] fileParts = dataOutputFile.split("/");
-			if (fileParts.length < 4)
-			{
-				throw new RuntimeException("Unexpected statistics output filename format: " + dataOutputFile
-						+ " . Expected " + format);
-			}
+			/*
+			 * String[] fileParts = dataOutputFile.split("/"); if
+			 * (fileParts.length < 4) { throw new
+			 * RuntimeException("Unexpected statistics output filename format: "
+			 * + dataOutputFile + " . Expected " + format); }
+			 * 
+			 * String oldExt = fileParts[fileParts.length - 1]; String
+			 * throughputExt = oldExt.replace("data-t", throughputExtension +
+			 * "-t"); String tuningExt = oldExt.replace("data-t",
+			 * tuningExtension + "-t");
+			 * 
+			 * throughputPath = dataOutputFile.replace(oldExt, throughputExt);
+			 * tuningPath = dataOutputFile.replace(oldExt, tuningExt);
+			 */
 
-			String oldExt = fileParts[fileParts.length - 1];
-			String throughputExt = oldExt.replace("data-t", throughputExtension + "-t");
-			String tuningExt = oldExt.replace("data-t", tuningExtension + "-t");
+			throughputPath = dataOutputFile + ".throughput";
+			tuningPath = dataOutputFile + ".tuning";
 
-			throughputPath = dataOutputFile.replace(oldExt, throughputExt);
-			tuningPath = dataOutputFile.replace(oldExt, tuningExt);
-
-			// System.err.println("Statistics Paths:");
-			// System.err.println(throughputPath);
-			// System.err.println(tuningPath);
+			System.err.println("Statistics Paths:");
+			System.err.println(throughputPath);
+			System.err.println(tuningPath);
 		}
 
 		try
@@ -98,6 +105,9 @@ public class StatisticsCollector
 		if (disabled)
 		{
 			System.err.println("STAT - throughput: " + throughput);
+			System.err.println("CONTROL - permits - "
+					+ ((DefaultPolicy) Controller.instance().getPolicy()).topLevelSemaphore.availablePermits() + "   "
+					+ +((DefaultPolicy) Controller.instance().getPolicy()).nestedSemaphore.availablePermits());
 			return;
 		}
 		throughputBuffer.append("" + throughput + System.getProperty("line.separator"));
@@ -107,20 +117,48 @@ public class StatisticsCollector
 	{
 		if (disabled)
 		{
-			System.err.println("STAT - throughput: " + throughput);
+			// System.err.println("STAT - throughput: " + throughput);
 			return;
 		}
 		throughputBuffer.append("+" + throughput + System.getProperty("line.separator"));
 	}
 
-	public void recordTuningPoint(int topLevel, int nested)
+	public void recordTuningPoint(Pair<Integer, Integer> point)
 	{
 		if (disabled)
 		{
-			System.err.println("STAT - tuningPoint: " + topLevel + nested);
+			// System.err.println("STAT - tuningPoint: " + point.first + ", " +
+			// point.second);
 			return;
 		}
-		tuningBuffer.append("" + topLevel + " " + nested + System.getProperty("line.separator"));
+		tuningBuffer.append("" + point.first + " " + point.second + System.getProperty("line.separator"));
+	}
+
+	public void recordTuningPoint(Pair<Integer, Integer> point, float measurement,
+			Pair<Integer, Integer>[] alternatives, float[] alternativeMeasurements)
+	{
+		if (disabled)
+		{
+			// System.err.println("STAT - tuningPoint: " + point.first + ", " +
+			// point.second);
+			return;
+		}
+		if (alternatives.length != alternativeMeasurements.length)
+		{
+			throw new RuntimeException("recordTuningPoint: different array lengths");
+		}
+		tuningBuffer.append("Point [" + point.first + "," + point.second + "] {" + measurement
+				+ "}\t -- alternatives were: ");
+		for (int i = 0; i < alternatives.length; i++)
+		{
+			if (alternatives[i] == null)
+			{
+				continue;
+			}
+			tuningBuffer.append("[" + alternatives[i].first + "," + alternatives[i].second + "] {"
+					+ alternativeMeasurements[i] + "} , \t");
+		}
+		tuningBuffer.append(System.getProperty("line.separator"));
 	}
 
 }

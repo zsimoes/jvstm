@@ -100,7 +100,7 @@ public class NestedTransaction extends ReadWriteTransaction {
         linearNestedOrecs = null;
         current.set(this.getParent());
         
-        controller.finishTransaction(tuningContext.get());
+        controller.finishTransaction(this, isNested());
     }
 
     protected boolean isAncestor(Transaction tx) {

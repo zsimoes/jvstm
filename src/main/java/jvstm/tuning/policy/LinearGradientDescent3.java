@@ -1,5 +1,6 @@
 package jvstm.tuning.policy;
 
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
@@ -7,6 +8,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import jvstm.Transaction;
 import jvstm.tuning.AdjustableSemaphore;
 import jvstm.tuning.Controller;
 import jvstm.tuning.ThreadState;
@@ -57,10 +59,14 @@ public class LinearGradientDescent3 extends TuningPolicy
 
 	private void init()
 	{
-		firstRound = true;
-		Pair<Integer, Integer> mean = curveBinder.getMidPoint();
-		maxNestedThreads = new AtomicInteger(mean.first);
-		maxTopLevelThreads = new AtomicInteger(mean.second);
+		Pair<Integer, Integer> config = Controller.getInitialConfiguration();
+		if (config == null)
+		{
+			pointBinder.getMidPoint();
+		}
+
+		maxTopLevelThreads = new AtomicInteger(config.first);
+		maxNestedThreads = new AtomicInteger(config.second);
 
 		topLevelSemaphore = new AdjustableSemaphore(maxTopLevelThreads.get());
 		nestedSemaphore = new AdjustableSemaphore(maxNestedThreads.get());
@@ -85,8 +91,6 @@ public class LinearGradientDescent3 extends TuningPolicy
 		bestTCR = 0f;
 	}
 
-	private boolean firstRound = true;
-
 	@Override
 	public void run(boolean mergePerThreadStatistics)
 	{
@@ -94,28 +98,47 @@ public class LinearGradientDescent3 extends TuningPolicy
 		boolean done = false;
 		while (!done)
 		{
-
-			firstRound = false;
-
 			if (mergePerThreadStatistics)
 			{
 				mergeStatistics();
 			}
 
-			float tcr = GDSaveTCR();
+			float measurement = GDSaveMeasurement();
+			Pair<Integer, Integer> current = new Pair<Integer, Integer>(currentPoint.first, currentPoint.second);
 
 			if (runCount % roundSize == 0)
 			{
-				GDEndRound(tcr);
+				float best = GDEndRound(measurement);
+
+				alternativeMeasurements[runCount % roundSize] = measurement;
+				alternatives[runCount % roundSize] = current;
+
+				controller.getStatisticsCollector().recordTuningPoint(currentPoint, best, alternatives,
+						alternativeMeasurements);
+				Arrays.fill(alternatives, null);
+				Arrays.fill(alternativeMeasurements, 0l);
+
+				runCount++;
+				return;
 			}
 
 			done = GDNextRun();
 
+			if (done)
+			{
+				alternativeMeasurements[runCount % roundSize] = measurement;
+				alternatives[runCount % roundSize] = current;
+			}
+
 			runCount++;
 		}
+
 	}
 
-	protected float GDSaveTCR()
+	private Pair<Integer, Integer>[] alternatives = new Pair[4];
+	private float[] alternativeMeasurements = new float[4];
+
+	protected float GDSaveMeasurement()
 	{
 		float tcr = getMeasurement(true);
 		if (tcr > bestTCR)
@@ -130,25 +153,28 @@ public class LinearGradientDescent3 extends TuningPolicy
 	// used to alternate between increasing top-level and nested threads
 	private boolean incX = true;
 
-	protected void GDEndRound(float tcr)
+	protected float GDEndRound(float tcr)
 	{
 		// have we stalled the system?
-		if ((tcr < tcrEpsilon) && bestPoint.equals(previousBestPoint))
-		{
-			// alternate between increasing nested or top-level
-			int deltaX = (incX ? deltas[0].first : deltas[2].first);
-			int deltaY = (incX ? deltas[0].second : deltas[2].second);
-			incX = !incX;
-			bestPoint.first = currentFixedPoint.first + deltaX;
-			bestPoint.second = currentFixedPoint.second + deltaY;
-		}
+		/*
+		 * if ((tcr < tcrEpsilon) && bestPoint.equals(previousBestPoint)) { //
+		 * alternate between increasing nested or top-level int deltaX = (incX ?
+		 * deltas[0].first : deltas[2].first); int deltaY = (incX ?
+		 * deltas[0].second : deltas[2].second); incX = !incX; bestPoint =
+		 * curveBinder.constrain(new Pair<Integer,
+		 * Integer>(currentFixedPoint.first, currentFixedPoint.second +
+		 * deltaY)); }
+		 */
 		// set the current point and set max threads accordingly:
 		setCurrentPoint(bestPoint);
 		setCurrentFixedPoint(bestPoint);
 		setPreviousBestPoint(bestPoint);
 
+		float res = bestTCR;
+		// System.err.println("\t" + currentPoint);
 		// reset count and bestTCR:
 		resetData();
+		return res;
 	}
 
 	protected boolean GDNextRun()
@@ -156,14 +182,15 @@ public class LinearGradientDescent3 extends TuningPolicy
 		// set the current point and max threads accordingly:
 		int newTopLevel = currentFixedPoint.first + deltas[runCount].first;
 		int newNested = currentFixedPoint.second + deltas[runCount].second;
-		if (newTopLevel < 1 || newNested < 1)
+		if (!pointBinder.isBound(newTopLevel, newNested))
 		{
-			// this move would take us to a negative value. Return false to
+			// this move would take us to an invalid value. Return false to
 			// ensure this run is repeated with other point.
 			return false;
 		}
 
 		setCurrentPoint(newTopLevel, newNested);
+		// System.err.println(currentPoint);
 		return true;
 	}
 
@@ -225,9 +252,9 @@ public class LinearGradientDescent3 extends TuningPolicy
 	}
 
 	@Override
-	public void finishTransaction(TuningContext t)
+	public void finishTransaction(Transaction t, boolean nested)
 	{
-		if (t.isNested())
+		if (nested)
 		{
 			nestedSemaphore.release();
 			currentNestedThreads.decrementAndGet();
@@ -236,12 +263,12 @@ public class LinearGradientDescent3 extends TuningPolicy
 			topLevelSemaphore.release();
 			currentTopLevelThreads.decrementAndGet();
 		}
-		t.getThreadState().finish();
-		t.getThreadState().setRunnable(false);
+		t.getTuningContext().getThreadState().finish();
+		t.getTuningContext().getThreadState().setRunnable(false);
 	}
 
 	@Override
-	public void tryRunTransaction(TuningContext t, boolean nested)
+	public void tryRunTransaction(Transaction t, boolean nested)
 	{
 		if (nested)
 		{
@@ -252,6 +279,6 @@ public class LinearGradientDescent3 extends TuningPolicy
 			topLevelSemaphore.acquireUninterruptibly();
 			currentTopLevelThreads.incrementAndGet();
 		}
-		t.getThreadState().tryRun();
+		t.getTuningContext().getThreadState().tryRun();
 	}
 }

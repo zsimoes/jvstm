@@ -11,6 +11,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import jvstm.Transaction;
 import jvstm.tuning.Controller;
 import jvstm.tuning.ThreadState;
 import jvstm.tuning.Tunable;
@@ -125,15 +126,15 @@ public class ThroughtputMeasurementPolicy extends TuningPolicy
 	}
 
 	@Override
-	public void finishTransaction(TuningContext t)
+	public void finishTransaction(Transaction t, boolean nested)
 	{
-		t.getThreadState().finish();
-		t.getThreadState().setRunnable(false);
+		t.getTuningContext().getThreadState().finish();
+		t.getTuningContext().getThreadState().setRunnable(false);
 	}
 
 	@Override
-	public void tryRunTransaction(TuningContext t, boolean nested)
+	public void tryRunTransaction(Transaction t, boolean nested)
 	{
-		t.getThreadState().tryRun();
+		t.getTuningContext().getThreadState().tryRun();
 	}
 }

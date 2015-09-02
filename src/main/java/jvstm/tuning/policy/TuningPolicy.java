@@ -4,6 +4,7 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
+import jvstm.Transaction;
 import jvstm.tuning.Controller;
 import jvstm.tuning.ThreadStatistics;
 import jvstm.tuning.Tunable;
@@ -16,12 +17,13 @@ public abstract class TuningPolicy
 
 	// Region fields
 	protected Controller controller;
-	protected CurveBinder curveBinder;
+	protected PointProvider pointProvider;
+	protected PointBinder pointBinder;
 	// the values passed to the following constructors are not used
 	protected ThreadStatistics globalTopLevelStatistics = new ThreadStatistics(-1, 0);
 	protected ThreadStatistics globalNestedStatistics = new ThreadStatistics(-1, 0);
 	protected ThreadStatistics globalStatistics = new ThreadStatistics(-1, 0);
-	protected String measurementType;
+	protected MeasurementType measurementType;
 	// EndRegion
 
 	protected AtomicInteger maxTopLevelThreads = new AtomicInteger(2);
@@ -29,13 +31,15 @@ public abstract class TuningPolicy
 	protected AtomicInteger currentTopLevelThreads = new AtomicInteger(0);
 	protected AtomicInteger currentNestedThreads = new AtomicInteger(0);
 
-	// Use only where needed. For now only in LinearGradientDescent2
-	protected boolean firstRound = false;
+	public static enum MeasurementType
+	{
+		tcr, throughput
+	}
 
 	public TuningPolicy(Controller controller)
 	{
 		this.controller = controller;
-		this.curveBinder = controller.getCurveBinder();
+		this.pointBinder = controller.getPointBinder();
 		setMeasurementType();
 	}
 
@@ -49,14 +53,20 @@ public abstract class TuningPolicy
 	{
 		String measr = Util.getSystemProperty("MeasurementType");
 		if (measr == null)
-			measr = "throughput";
-		this.measurementType = measr;
-	}
+		{
+			measurementType = MeasurementType.throughput;
+			return;
+		}
+		
+		try
+		{
+			measurementType = MeasurementType.valueOf(measr);
+		} catch (IllegalArgumentException i)
+		{
+			throw new RuntimeException("Invalid policy interval value: " + measr
+					+ ". Use \"java -DMeasurementType=<mType>\", where mType is one of \"tcr\" or \"throughput\"");
+		}
 
-	public Pair<Integer, Integer> bindPoint(Pair<Integer, Integer> target)
-	{
-		// delegate
-		return curveBinder.constrain(target);
 	}
 
 	// to do: use lock?
@@ -72,10 +82,10 @@ public abstract class TuningPolicy
 
 	public float getMeasurement(boolean resetStatistics)
 	{
-		if (measurementType == "throughput")
+		if (measurementType.equals("throughput"))
 		{
 			return getThroughput(resetStatistics);
-		} else if (measurementType == "tcr")
+		} else if (measurementType.equals("tcr"))
 		{
 			return getTCR(resetStatistics);
 		} else
@@ -132,24 +142,12 @@ public abstract class TuningPolicy
 
 	public int getMaxNestedThreads()
 	{
-		if (firstRound)
-		{
-			return currentNestedThreads.get();
-		} else
-		{
-			return maxNestedThreads.get();
-		}
+		return maxNestedThreads.get();
 	}
 
 	public int getMaxTopLevelThreads()
 	{
-		if (firstRound)
-		{
-			return currentTopLevelThreads.get();
-		} else
-		{
-			return maxTopLevelThreads.get();
-		}
+		return maxTopLevelThreads.get();
 	}
 
 	public void registerContext(TuningContext context)
@@ -179,8 +177,13 @@ public abstract class TuningPolicy
 	// Create and return new tunable, in whatever state this policy requires
 	public abstract Tunable newTunable();
 
-	public abstract void finishTransaction(TuningContext t);
+	public abstract void finishTransaction(Transaction t, boolean isNested);
 
-	public abstract void tryRunTransaction(TuningContext t, boolean isNested);
+	public abstract void tryRunTransaction(Transaction t, boolean isNested);
+
+	public ThreadStatistics getGlobalStatistics()
+	{
+		return globalStatistics;
+	}
 
 }

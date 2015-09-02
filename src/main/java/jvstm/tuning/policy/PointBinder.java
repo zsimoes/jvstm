@@ -1,21 +1,21 @@
 package jvstm.tuning.policy;
 
-import jvstm.util.Pair;
+import jvstm.tuning.TuningPoint;
 
-public class CurveBinder
+public class PointBinder
 {
 	private int maximum;
 	private int maxX;
 	private int maxY;
 	private boolean independentMaximums;
 
-	public CurveBinder(int maximum)
+	public PointBinder(int maximum)
 	{
 		this.maximum = maximum;
 		this.independentMaximums = false;
 	}
 
-	public CurveBinder(int maximum, int maxX, int maxY)
+	public PointBinder(int maximum, int maxX, int maxY)
 	{
 		this.maximum = maximum;
 		this.maxX = maxX;
@@ -23,10 +23,12 @@ public class CurveBinder
 		this.independentMaximums = true;
 		throw new UnsupportedOperationException();
 	}
-	
-	public Pair<Integer, Integer> getMidPoint(){
-		Pair<Integer, Integer> result = new Pair<Integer, Integer>(1,1);
-		while(isBound(result)) {
+
+	public TuningPoint getMidPoint()
+	{
+		TuningPoint result = new TuningPoint(1, 1);
+		while (isBound(result))
+		{
 			result.first++;
 			result.second++;
 		}
@@ -34,12 +36,18 @@ public class CurveBinder
 		result.second--;
 		return result;
 	}
-	
-	public boolean isBound(Pair<Integer, Integer> point) {
-		return point.first * point.second < maximum;
+
+	public boolean isBound(int top, int nested)
+	{
+		return top * nested < maximum && top > 0 && nested > 0;
 	}
 
-	protected Pair<Integer, Integer> constrain(Pair<Integer, Integer> target)
+	public boolean isBound(TuningPoint point)
+	{
+		return isBound(point.first, point.second);
+	}
+
+	protected TuningPoint constrain(TuningPoint target)
 	{
 		if (independentMaximums)
 		{
@@ -48,27 +56,27 @@ public class CurveBinder
 		return constrainLinear(target);
 	}
 
-	protected Pair<Integer, Integer> constrainIndependent(Pair<Integer, Integer> target)
+	protected TuningPoint constrainIndependent(TuningPoint target)
 	{
 		throw new UnsupportedOperationException();
 	}
 
-	protected Pair<Integer, Integer> constrainLinear(Pair<Integer, Integer> target)
+	protected TuningPoint constrainLinear(TuningPoint target)
 	{
 		int oldX = target.first, oldY = target.second;
 		// Below axis?
 
 		if (oldX < 1 && oldY < 1)
 		{
-			return new Pair<Integer, Integer>(1, 1);
+			return new TuningPoint(1, 1);
 		} else if (oldX < 1)
 		{
-			return new Pair<Integer, Integer>(1, oldY);
+			return new TuningPoint(1, oldY);
 		} else if (oldY < 1)
 		{
-			return new Pair<Integer, Integer>(oldX, 1);
+			return new TuningPoint(oldX, 1);
 		}
-		
+
 		int product = oldX * oldY;
 		if (product <= maximum)
 		{
@@ -84,16 +92,21 @@ public class CurveBinder
 
 		if (diffX < diffY)
 		{
-			return new Pair<Integer, Integer>(newX, oldY);
+			return new TuningPoint(newX, oldY);
 		} else
 		{
-			return new Pair<Integer, Integer>(oldX, newY);
+			return new TuningPoint(oldX, newY);
 		}
 	}
 
 	public int getMaximum()
 	{
 		return maximum;
+	}
+
+	public void setMaximum(int max)
+	{
+		maximum = max;
 	}
 
 	public int getMaxX()
