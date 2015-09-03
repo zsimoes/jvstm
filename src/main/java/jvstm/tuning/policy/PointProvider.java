@@ -278,6 +278,8 @@ public abstract class PointProvider
 			//System.err.println("Forced Round end!");
 			initRound();
 			next = getPoint();
+			System.err.println("# PointProvider - Forced Round End (no more points avail.): new Point is " + next.second + System.lineSeparator()
+					+ "___________________________________________________");
 		}
 
 		int retries = next.first;

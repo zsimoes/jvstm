@@ -130,16 +130,14 @@ public class LinearGradientDescent4 extends TuningPolicy
 
 		if (pointProvider.isRoundEnd())
 		{
-			System.err.println("# GD4 ROUND END: previous was " + this.currentPoint + "w/ { " + measure
-					+ " }  --- new Point is " + point + System.lineSeparator()
-					+ "___________________________________________________");
 			point = pointProvider.initRound();
+			System.err.println("# GD4 ROUND END: new Point is " + point + System.lineSeparator()
+					+ "___________________________________________________");
 		} else
 		{
 			// start round with best point from previous round:
 			point = pointProvider.requestPoint(measure);
-			System.err.println("GD4 round: previous was " + this.currentPoint + "w/ { " + measure
-					+ " }  --- new Point is " + point);
+			System.err.println("GD4 round: new Point is " + point);
 		}
 
 		setCurrentPoint(point);
