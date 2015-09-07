@@ -44,6 +44,11 @@ public class Controller implements Runnable
 	private Controller()
 	{
 		String outputPath = Util.getSystemProperty("output");
+		
+		if(outputPath == null || outputPath.equals("")) {
+			throw new RuntimeException("Invalid output folder for statistics. Use \"java -Doutput=<folder_path> ...\"");
+		}
+		
 		try
 		{
 			String intervalProp = Util.getSystemProperty("interval");
@@ -226,7 +231,6 @@ public class Controller implements Runnable
 		policy.registerContext(context);
 	}
 
-	// TODO: change boolean to nestinglevel
 	public TuningContext registerThread(long threadId)
 	{
 		return policy.registerThread(threadId);
@@ -265,62 +269,15 @@ public class Controller implements Runnable
 		controller.start();
 	}
 
-	public static HashMap<Integer, Pair<String, TuningPoint>> starts = new HashMap<Integer, Pair<String, TuningPoint>>();
-	public static volatile int i = 0;
-	public final int DEBUGSTARTSTHRESHOLD = -1;
 
 	public void finishTransaction(Transaction t, boolean isNested)
 	{
-		if (!isNested && starts.containsKey(t.hashCode()))
-		{
-			starts.get(t.hashCode()).second.second++;
-		}
 		policy.finishTransaction(t, isNested);
 	}
 
-	@SuppressWarnings("unused")
 	public void tryRunTransaction(Transaction t, boolean isNested)
 	{
-		if (started.contains(t))
-		{
-			// System.out.println("REPLAY - " + t.getClass().getName());
-			return;
-		}
-		started.add(t);
-
-		// debug begins and finishes
-		if (!isNested && DEBUGSTARTSTHRESHOLD > 0)
-		{
-			if (!starts.containsKey(t.hashCode()))
-			{
-				Pair<String, TuningPoint> p = new Pair<String, TuningPoint>(Transaction.current().getClass().getName(),
-						new TuningPoint(0, 0));
-				starts.put(t.hashCode(), p);
-			}
-			starts.get(t.hashCode()).second.first++;
-		}
-		if (++i > DEBUGSTARTSTHRESHOLD)
-		{
-			for (Pair<String, TuningPoint> val : starts.values())
-			{
-				TuningPoint p = val.second;
-				if (p.first != p.second)
-				{
-					System.out.println(val);
-				}
-			}
-		}
 		policy.tryRunTransaction(t, isNested);
-	}
-
-	public int getMaxTopLevelThreads()
-	{
-		return policy.getMaxTopLevelThreads();
-	}
-
-	public int getMaxNestedThreads()
-	{
-		return policy.getMaxNestedThreads();
 	}
 
 	public Map<Long, TuningContext> getContexts()

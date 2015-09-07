@@ -76,8 +76,6 @@ public class ThroughtputMeasurementPolicy extends TuningPolicy
 		{
 			throw new RuntimeException(e);
 		}
-		maxNestedThreads = new AtomicInteger(Integer.MAX_VALUE);
-		maxTopLevelThreads = new AtomicInteger(Integer.MAX_VALUE);
 		resetData();
 	}
 

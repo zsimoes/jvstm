@@ -48,6 +48,11 @@ public class LinearGradientDescent3 extends TuningPolicy
 	protected static int roundSize;
 	protected int runCount;
 
+	protected AtomicInteger maxTopLevelThreads = new AtomicInteger(0);
+	protected AtomicInteger maxNestedThreads = new AtomicInteger(0);
+	protected AtomicInteger currentTopLevelThreads = new AtomicInteger(0);
+	protected AtomicInteger currentNestedThreads = new AtomicInteger(0);
+	
 	protected AdjustableSemaphore topLevelSemaphore;
 	protected AdjustableSemaphore nestedSemaphore;
 
@@ -67,6 +72,8 @@ public class LinearGradientDescent3 extends TuningPolicy
 
 		maxTopLevelThreads = new AtomicInteger(config.first);
 		maxNestedThreads = new AtomicInteger(config.second);
+		currentTopLevelThreads = new AtomicInteger(config.first);
+		currentNestedThreads = new AtomicInteger(config.second);
 
 		topLevelSemaphore = new AdjustableSemaphore(maxTopLevelThreads.get());
 		nestedSemaphore = new AdjustableSemaphore(maxNestedThreads.get());

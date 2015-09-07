@@ -10,7 +10,6 @@ public class TuningContext
 
 	boolean registered;
 	private long threadId;
-	private int nestingLevel;
 	private ThreadStatistics statistics;
 	private Tunable threadState;
 
@@ -20,7 +19,6 @@ public class TuningContext
 	{
 		registered = false;
 		this.threadId = threadId;
-		this.nestingLevel = nestingLevel;
 		this.statistics = new ThreadStatistics(threadId, nestingLevel);
 		this.threadState = new ThreadState(ThreadState.RUNNABLE);
 	}
@@ -57,11 +55,6 @@ public class TuningContext
 		this.threadState = threadState;
 	}
 
-	public boolean isNested()
-	{
-		return (nestingLevel > 0);
-	}
-
 	public Long getThreadId()
 	{
 		return threadId;
@@ -80,8 +73,8 @@ public class TuningContext
 	@Override
 	public String toString()
 	{
-		return "TuningContext [registered=" + registered + ", threadId=" + threadId + ", nestingLevel=" + nestingLevel
-				+ ", statistics=" + statistics + ", threadState=" + threadState + "]";
+		return "TuningContext [registered=" + registered + ", threadId=" + threadId + ", statistics=" + statistics
+				+ ", threadState=" + threadState + "]";
 	}
 
 }

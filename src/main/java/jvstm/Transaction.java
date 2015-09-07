@@ -40,7 +40,6 @@ import java.util.logging.Logger;
 
 import jvstm.gc.GCTask;
 import jvstm.gc.TxContext;
-import jvstm.tuning.AbortingThreadPool;
 import jvstm.tuning.Controller;
 import jvstm.tuning.ThreadState;
 import jvstm.tuning.ThreadStatistics;
@@ -89,8 +88,9 @@ public abstract class Transaction
 			return Controller.instance().registerThread(Thread.currentThread().getId());
 		}
 	};
-	
-	public static TuningContext getTuningContext() {
+
+	public static TuningContext getTuningContext()
+	{
 		return tuningContext.get();
 	}
 
@@ -98,46 +98,19 @@ public abstract class Transaction
 
 	static
 	{
-		boolean useAbortingThreadPool = Boolean.getBoolean(TP_PROP);
-
-		useAbortingThreadPool = true;
-
-		/*
-		 * logger.info(String.format(
-		 * "********** Force aborting ThreadPool = %b (disable/enable it in property %s)"
-		 * , !useAbortingThreadPool, TP_PROP));
-		 */
-		if (useAbortingThreadPool)
-		{
-			// use aborting thread pool
-			nestedParPool = AbortingThreadPool.newAbortingThreadPool(Runtime.getRuntime().availableProcessors() * 2,
-					new ThreadFactory()
+		// use default fixed thread pool
+		nestedParPool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2,
+				new ThreadFactory()
+				{
+					@Override
+					public Thread newThread(Runnable r)
 					{
-						@Override
-						public Thread newThread(Runnable r)
-						{
-							Thread t = new Thread(r);
-							t.setDaemon(true);
-							t.setName("TxWorker" + t.getId());
-							return t;
-						}
-					});
-		} else
-		{
-			// use default fixed thread pool
-			nestedParPool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors() * 2,
-					new ThreadFactory()
-					{
-						@Override
-						public Thread newThread(Runnable r)
-						{
-							Thread t = new Thread(r);
-							t.setDaemon(true);
-							t.setName("TxWorker" + t.getId());
-							return t;
-						}
-					});
-		}
+						Thread t = new Thread(r);
+						t.setDaemon(true);
+						t.setName("TxWorker" + t.getId());
+						return t;
+					}
+				});
 
 		// start the tuning controller thread
 		if (!Controller.isRunning())

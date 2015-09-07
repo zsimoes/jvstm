@@ -26,11 +26,6 @@ public abstract class TuningPolicy
 	protected MeasurementType measurementType;
 	// EndRegion
 
-	protected AtomicInteger maxTopLevelThreads = new AtomicInteger(2);
-	protected AtomicInteger maxNestedThreads = new AtomicInteger(2);
-	protected AtomicInteger currentTopLevelThreads = new AtomicInteger(0);
-	protected AtomicInteger currentNestedThreads = new AtomicInteger(0);
-
 	public static enum MeasurementType
 	{
 		tcr, throughput
@@ -82,10 +77,10 @@ public abstract class TuningPolicy
 
 	public float getMeasurement(boolean resetStatistics)
 	{
-		if (measurementType.equals("throughput"))
+		if (measurementType == MeasurementType.throughput)
 		{
 			return getThroughput(resetStatistics);
-		} else if (measurementType.equals("tcr"))
+		} else if (measurementType == MeasurementType.tcr)
 		{
 			return getTCR(resetStatistics);
 		} else
@@ -120,6 +115,10 @@ public abstract class TuningPolicy
 
 		mergeStatistics();
 		long result = globalStatistics.getTransactionCount();
+		
+		if(result < 0)  {
+			result = 0;
+		}
 
 		if (resetStatistics)
 		{
@@ -140,23 +139,12 @@ public abstract class TuningPolicy
 		globalStatistics.reset();
 	}
 
-	public int getMaxNestedThreads()
-	{
-		return maxNestedThreads.get();
-	}
-
-	public int getMaxTopLevelThreads()
-	{
-		return maxTopLevelThreads.get();
-	}
-
 	public void registerContext(TuningContext context)
 	{
 		controller.getContexts().put(context.getThreadId(), context);
 		context.setRegistered(true);
 	}
 
-	// TODO: deal with nesting level
 	public TuningContext registerThread(long threadId)
 	{
 

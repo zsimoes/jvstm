@@ -1,11 +1,5 @@
 package jvstm.tuning.policy;
 
-import java.util.Arrays;
-import java.util.Map;
-import java.util.Queue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import jvstm.Transaction;
@@ -13,7 +7,6 @@ import jvstm.tuning.AdjustableSemaphore;
 import jvstm.tuning.Controller;
 import jvstm.tuning.ThreadState;
 import jvstm.tuning.Tunable;
-import jvstm.tuning.TuningContext;
 import jvstm.tuning.TuningPoint;
 
 public class LinearGradientDescent4 extends TuningPolicy
@@ -80,9 +73,6 @@ public class LinearGradientDescent4 extends TuningPolicy
 			pointBinder.getMidPoint();
 		}
 
-		maxTopLevelThreads = new AtomicInteger(config.first);
-		maxNestedThreads = new AtomicInteger(config.second);
-
 		if (topLevelSemaphore != null)
 		{
 			topLevelSemaphore.invalidate();
@@ -91,10 +81,10 @@ public class LinearGradientDescent4 extends TuningPolicy
 		{
 			nestedSemaphore.invalidate();
 		}
-		topLevelSemaphore = new AdjustableSemaphore(maxTopLevelThreads.get());
-		nestedSemaphore = new AdjustableSemaphore(maxNestedThreads.get());
+		topLevelSemaphore = new AdjustableSemaphore(config.first);
+		nestedSemaphore = new AdjustableSemaphore(config.second);
 
-		currentPoint = new TuningPoint(maxTopLevelThreads.get(), maxNestedThreads.get());
+		currentPoint = new TuningPoint(config.first, config.second);
 		this.pointProvider = new LinearGDPointProvider(5, pointBinder);
 	}
 
@@ -153,8 +143,6 @@ public class LinearGradientDescent4 extends TuningPolicy
 
 		// this.currentTopLevelThreads.set(topLevel);
 		// this.currentNestedThreads.set(nested);
-		this.maxTopLevelThreads.set(topLevel);
-		this.maxNestedThreads.set(nested);
 
 		if (topLevel > previousX)
 		{
@@ -190,11 +178,9 @@ public class LinearGradientDescent4 extends TuningPolicy
 		if (nested)
 		{
 			nestedSemaphore.release();
-			currentNestedThreads.decrementAndGet();
 		} else
 		{
 			topLevelSemaphore.release();
-			currentTopLevelThreads.decrementAndGet();
 		}
 		t.getTuningContext().getThreadState().finish();
 		t.getTuningContext().getThreadState().setRunnable(false);
@@ -206,11 +192,9 @@ public class LinearGradientDescent4 extends TuningPolicy
 		if (nested)
 		{
 			nestedSemaphore.acquireUninterruptibly();
-			currentNestedThreads.incrementAndGet();
 		} else
 		{
 			topLevelSemaphore.acquireUninterruptibly();
-			currentTopLevelThreads.incrementAndGet();
 		}
 		t.getTuningContext().getThreadState().tryRun();
 	}

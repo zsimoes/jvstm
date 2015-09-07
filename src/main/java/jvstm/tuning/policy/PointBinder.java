@@ -7,12 +7,12 @@ public class PointBinder
 	private int maximum;
 	private int maxX;
 	private int maxY;
-	private boolean independentMaximums;
+	private boolean independentMaxima;
 
 	public PointBinder(int maximum)
 	{
 		this.maximum = maximum;
-		this.independentMaximums = false;
+		this.independentMaxima = false;
 	}
 
 	public PointBinder(int maximum, int maxX, int maxY)
@@ -20,7 +20,9 @@ public class PointBinder
 		this.maximum = maximum;
 		this.maxX = maxX;
 		this.maxY = maxY;
-		this.independentMaximums = true;
+		this.independentMaxima = true;
+
+		// Independent maximuma not implemented, possibly not needed
 		throw new UnsupportedOperationException();
 	}
 
@@ -32,6 +34,8 @@ public class PointBinder
 			result.first++;
 			result.second++;
 		}
+
+		// we went over the "border", so backtrack one step:
 		result.first--;
 		result.second--;
 		return result;
@@ -49,7 +53,7 @@ public class PointBinder
 
 	protected TuningPoint constrain(TuningPoint target)
 	{
-		if (independentMaximums)
+		if (independentMaxima)
 		{
 			return constrainIndependent(target);
 		}
@@ -78,6 +82,8 @@ public class PointBinder
 		}
 
 		int product = oldX * oldY;
+		// problem: two negative values can produce a valid positive result.
+		// However, this is checked in the previous verifications.
 		if (product <= maximum)
 		{
 			// okay
@@ -119,9 +125,9 @@ public class PointBinder
 		return maxY;
 	}
 
-	public boolean isIndependentMaximums()
+	public boolean hasIndependentMaxima()
 	{
-		return independentMaximums;
+		return independentMaxima;
 	}
 
 }
