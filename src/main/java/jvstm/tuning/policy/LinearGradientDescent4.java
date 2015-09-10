@@ -41,7 +41,7 @@ public class LinearGradientDescent4 extends TuningPolicy
 		}
 
 		@Override
-		public TuningPoint getNextPoint()
+		public TuningPoint doGetPoint()
 		{
 			TuningPoint point = deltas[deltaIndex].applyTo(currentFixedPoint);
 			incDeltaIndex();
@@ -107,7 +107,7 @@ public class LinearGradientDescent4 extends TuningPolicy
 			TuningPoint point = Controller.getInitialConfiguration();
 			pointProvider.initRound(point);
 
-			System.err.println("# GD4 FIRST ROUND: new Point is " + point);
+			System.err.println("# GD4 FIRST ROUND: new fixed Point is " + point);
 			setCurrentPoint(point);
 			return;
 		}
@@ -115,13 +115,14 @@ public class LinearGradientDescent4 extends TuningPolicy
 		// save current point
 		float measure = getMeasurement(true);
 		pointProvider.saveCurrentPoint(measure);
+		System.err.println("# Measurement: " + measure);
 
 		TuningPoint point = null;
 
 		if (pointProvider.isRoundEnd())
 		{
 			point = pointProvider.initRound();
-			System.err.println("# GD4 ROUND END: new Point is " + point + System.lineSeparator()
+			System.err.println("# GD4 ROUND END: new fixed Point is " + point + System.lineSeparator()
 					+ "___________________________________________________");
 		} else
 		{
@@ -171,7 +172,7 @@ public class LinearGradientDescent4 extends TuningPolicy
 	{
 		return new ThreadState(ThreadState.RUNNABLE);
 	}
-
+	
 	@Override
 	public void finishTransaction(Transaction t, boolean nested)
 	{

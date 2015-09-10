@@ -184,12 +184,12 @@ public abstract class PointProvider
 
 	public void saveCurrentPoint(float measurement)
 	{
-		//System.err.println("PointProvider.saveCurrentPoint(measurement)");
+		// System.err.println("PointProvider.saveCurrentPoint(measurement)");
 		currentRecord.measurement = measurement;
 		if (measurement > currentRound.getBest().getMeasurement())
 		{
 			currentRound.setBest(currentRecord);
-			//System.err.println("Replaced best record: " + currentRecord);
+			// System.err.println("Replaced best record: " + currentRecord);
 		}
 	}
 
@@ -197,14 +197,14 @@ public abstract class PointProvider
 	{
 		runCount++;
 		runCount %= roundSize;
-		//System.err.println("INC");
+		// System.err.println("INC");
 	}
 
 	protected void incRunCount(int num)
 	{
 		runCount += num;
 		runCount %= roundSize;
-		//System.err.println("INC " + num);
+		// System.err.println("INC " + num);
 	}
 
 	/*
@@ -212,14 +212,14 @@ public abstract class PointProvider
 	 */
 	public void initRound(TuningPoint point)
 	{
-		//System.err.println("PointProvider.initRound(point)");
+		// System.err.println("PointProvider.initRound(point)");
 		// first round? set the counter right.
 		if (runCount != -1)
 		{
 			incRunCount();
 		} else
 		{
-			//System.err.println("inc'ed");
+			// System.err.println("inc'ed");
 			runCount = 1;
 		}
 
@@ -236,7 +236,7 @@ public abstract class PointProvider
 
 	public TuningPoint initRound()
 	{
-		//System.err.println("PointProvider.initRound()");
+		// System.err.println("PointProvider.initRound()");
 		incRunCount();
 
 		// debug
@@ -259,14 +259,12 @@ public abstract class PointProvider
 
 	private void assertValidPoint(TuningPoint point)
 	{
-		//System.err.println("PointProvider.assertValidPoint: " + point);
-		int x = point.first, y = point.second;
-		assert (x > 0 && x < 49 && y > 0 && y < 49);
+		assert this.pointBinder.isBound(point);
 	}
 
 	public TuningPoint requestPoint(float previousPointMeasurement)
 	{
-		//System.err.println("PointProvider.requestPoint(measurement)");
+		// System.err.println("PointProvider.requestPoint(measurement)");
 
 		currentRecord.setMeasurement(previousPointMeasurement);
 
@@ -275,11 +273,15 @@ public abstract class PointProvider
 		if (next == null)
 		{
 			// round end.
-			//System.err.println("Forced Round end!");
-			initRound();
-			next = getPoint();
-			System.err.println("# PointProvider - Forced Round End (no more points avail.): new Point is " + next.second + System.lineSeparator()
-					+ "___________________________________________________");
+			next = new Pair<Integer, TuningPoint>(1, initRound());
+			// next = getPoint();
+			if (next.second == null)
+			{
+				throw new RuntimeException("repeated round end");
+			}
+			System.err.println("# PointProvider - Forced Round End (no more points avail.): new Point is "
+					+ next.second + System.lineSeparator() + "___________________________________________________");
+			// + ((next != null) ? ": new Point is " + next.second : "")
 		}
 
 		int retries = next.first;
@@ -295,14 +297,10 @@ public abstract class PointProvider
 		return point;
 	}
 
-	protected TuningPoint selectBestPoint()
-	{
-		//System.err.println("PointProvider.selectBestPoint()");
-		return currentRound.getBest().getPoint();
-	}
-
 	// this method provides a valid point and the number of retries needed to
-	// find it
+	// find it, without exceeding the round limit. I.e. if there are two points
+	// left to explore, but none of them is valid, this method returns NULL to
+	// signal a round end. 
 	protected Pair<Integer, TuningPoint> getPoint()
 	{
 		TuningPoint point = null;
@@ -310,8 +308,8 @@ public abstract class PointProvider
 
 		while (true)
 		{
-			point = getNextPoint();
-			System.err.println("PointProvider.getPoint() iteration: " + point);
+			point = doGetPoint();
+			//System.err.println("PointProvider.getPoint() iteration: " + point);
 
 			if (pointBinder.isBound(point))
 			{
@@ -331,5 +329,11 @@ public abstract class PointProvider
 		return new Pair<Integer, TuningPoint>(tries, point);
 	}
 
-	public abstract TuningPoint getNextPoint();
+	protected TuningPoint selectBestPoint()
+	{
+		// System.err.println("PointProvider.selectBestPoint()");
+		return currentRound.getBest().getPoint();
+	}
+
+	protected abstract TuningPoint doGetPoint();
 }

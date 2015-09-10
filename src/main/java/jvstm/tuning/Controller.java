@@ -34,21 +34,12 @@ public class Controller implements Runnable
 	private StatisticsCollector statisticsCollector;
 	private static Map<String, Class<? extends TuningPolicy>> policies;
 	private static TuningPoint initialConfig = new TuningPoint();
-
-	// private static Map<String, Class<? extends TuningPolicy>>
-	// tuningMechanisms;
-
 	// EndRegion
 
 	// Region singleton
 	private Controller()
 	{
 		String outputPath = Util.getSystemProperty("output");
-		
-		if(outputPath == null || outputPath.equals("")) {
-			throw new RuntimeException("Invalid output folder for statistics. Use \"java -Doutput=<folder_path> ...\"");
-		}
-		
 		try
 		{
 			String intervalProp = Util.getSystemProperty("interval");
@@ -269,7 +260,6 @@ public class Controller implements Runnable
 		controller.start();
 	}
 
-
 	public void finishTransaction(Transaction t, boolean isNested)
 	{
 		policy.finishTransaction(t, isNested);
@@ -277,6 +267,13 @@ public class Controller implements Runnable
 
 	public void tryRunTransaction(Transaction t, boolean isNested)
 	{
+		if (started.contains(t))
+		{
+			// System.out.println("REPLAY - " + t.getClass().getName());
+			return;
+		}
+		started.add(t);
+		
 		policy.tryRunTransaction(t, isNested);
 	}
 
