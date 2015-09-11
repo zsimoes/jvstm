@@ -1,11 +1,6 @@
 package jvstm.tuning.policy;
 
 import java.util.Arrays;
-import java.util.Map;
-import java.util.Queue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import jvstm.Transaction;
@@ -13,7 +8,6 @@ import jvstm.tuning.AdjustableSemaphore;
 import jvstm.tuning.Controller;
 import jvstm.tuning.ThreadState;
 import jvstm.tuning.Tunable;
-import jvstm.tuning.TuningContext;
 import jvstm.util.Pair;
 
 public class LinearGradientDescent3 extends TuningPolicy
@@ -52,7 +46,7 @@ public class LinearGradientDescent3 extends TuningPolicy
 	protected AtomicInteger maxNestedThreads = new AtomicInteger(0);
 	protected AtomicInteger currentTopLevelThreads = new AtomicInteger(0);
 	protected AtomicInteger currentNestedThreads = new AtomicInteger(0);
-	
+
 	protected AdjustableSemaphore topLevelSemaphore;
 	protected AdjustableSemaphore nestedSemaphore;
 

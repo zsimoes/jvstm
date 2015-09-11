@@ -4,20 +4,12 @@ import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.util.Map;
-import java.util.Queue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import jvstm.Transaction;
 import jvstm.tuning.Controller;
 import jvstm.tuning.ThreadState;
 import jvstm.tuning.Tunable;
-import jvstm.tuning.TuningContext;
 import jvstm.tuning.Util;
-import jvstm.util.Pair;
 
 public class ThroughtputMeasurementPolicy extends TuningPolicy
 {

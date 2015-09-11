@@ -1,7 +1,7 @@
 package jvstm.tuning;
 
+import java.util.Collections;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -13,10 +13,8 @@ import jvstm.tuning.policy.DefaultPolicy;
 import jvstm.tuning.policy.DiagonalGradientDescent;
 import jvstm.tuning.policy.IndependentGradientDescent;
 import jvstm.tuning.policy.InterleavedGradientDescent;
-import jvstm.tuning.policy.LinearGradientDescent3;
 import jvstm.tuning.policy.ThroughtputMeasurementPolicy;
 import jvstm.tuning.policy.TuningPolicy;
-import jvstm.util.Pair;
 
 public class Controller implements Runnable
 {
@@ -34,6 +32,7 @@ public class Controller implements Runnable
 	private StatisticsCollector statisticsCollector;
 	private static Map<String, Class<? extends TuningPolicy>> policies;
 	private static TuningPoint initialConfig = new TuningPoint();
+
 	// EndRegion
 
 	// Region singleton
@@ -52,7 +51,16 @@ public class Controller implements Runnable
 		statisticsCollector = new StatisticsCollector(outputPath, intervalMillis);
 
 		contexts = new ConcurrentHashMap<Long, TuningContext>();
-		started = new HashSet<Transaction>();
+
+		// TODO - possible problem that leads to sempahores leaking permits.
+		// From the Java documentation:
+		// (in using newSetFromMap(ConcurrentHashMap)) "read access is fully
+		// concurrent
+		// to itself and the writing threads (but might not yet see the results
+		// of the changes currently being written)". So, reading threads may not
+		// be able to see newly registering transactions in other threads, which
+		// may lead to replays (re-start()s). Test this.
+		started = Collections.newSetFromMap(new ConcurrentHashMap<Transaction, Boolean>());
 
 		String m = Util.getSystemProperty("maxThreads");
 		if (m == null)
@@ -143,20 +151,7 @@ public class Controller implements Runnable
 				System.err.println("Policy System Property not found - defaulting to LinearGD.");
 				policy = new LinearGradientDescent4(this);
 				return;
-			} /*
-			 * else if (pol.equals("LinearGD")) { // select appropriate tuning
-			 * mechanism. If absent, use normal // LinearGD String mechanism =
-			 * Util.getSystemProperty("tuningMechanism"); if (mechanism != null)
-			 * { Class<? extends TuningPolicy> mec =
-			 * tuningMechanisms.get(mechanism); if (mec != null) { policy =
-			 * mec.getConstructor(Controller.class).newInstance(this);
-			 * System.err.println("Selected tuning mechanism: " +
-			 * mechanism.getClass().getName()); } else { throw new
-			 * RuntimeException
-			 * ("jvstm.tuning.Controller (init) - Invalid tuning mechanism: " +
-			 * mechanism + "." + System.getProperty("line.separator") +
-			 * "Available policies are: " + tuningMechanisms.keySet()); } } }
-			 */
+			}
 
 			Class<? extends TuningPolicy> c = policies.get(pol);
 			if (c == null)
@@ -240,7 +235,8 @@ public class Controller implements Runnable
 				if (enabled)
 				{
 					policy.run(true);
-				} else {
+				} else
+				{
 					System.err.println("Controller disabled");
 				}
 			} catch (InterruptedException e)
@@ -273,7 +269,7 @@ public class Controller implements Runnable
 			return;
 		}
 		started.add(t);
-		
+
 		policy.tryRunTransaction(t, isNested);
 	}
 

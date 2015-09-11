@@ -279,8 +279,8 @@ public abstract class PointProvider
 			{
 				throw new RuntimeException("repeated round end");
 			}
-			System.err.println("# PointProvider - Forced Round End (no more points avail.): new Point is "
-					+ next.second + System.lineSeparator() + "___________________________________________________");
+			/*System.err.println("# PointProvider - Forced Round End (no more points avail.): new Point is "
+					+ next.second + System.lineSeparator() + "___________________________________________________");*/
 			// + ((next != null) ? ": new Point is " + next.second : "")
 		}
 

@@ -7,12 +7,10 @@ public class ThreadStatistics
 	private volatile long commitCount;
 	private volatile long abortCount;
 	private volatile long threadId;
-	private volatile long nestingLevel;
 
-	public ThreadStatistics(long threadId, int nestingLevel)
+	public ThreadStatistics(long threadId)
 	{
 		this.threadId = threadId;
-		this.nestingLevel = nestingLevel;
 	}
 
 	public void reset()
@@ -20,7 +18,6 @@ public class ThreadStatistics
 		transactionCount = 0;
 		commitCount = 0;
 		abortCount = 0;
-		nestingLevel = 0;
 	}
 
 	public void reset(long threadId)
@@ -41,16 +38,6 @@ public class ThreadStatistics
 	public long getThreadId()
 	{
 		return threadId;
-	}
-
-	public long getNestingLevel()
-	{
-		return nestingLevel;
-	}
-
-	protected void setNestingLevel(int nestingLevel)
-	{
-		this.nestingLevel = nestingLevel;
 	}
 
 	public long getTransactionCount()
@@ -102,7 +89,7 @@ public class ThreadStatistics
 	public String toString()
 	{
 		return "ThreadStatistics [transactionCount=" + transactionCount + ", commitCount=" + commitCount
-				+ ", abortCount=" + abortCount + ", threadId=" + threadId + ", nestingLevel=" + nestingLevel + "]";
+				+ ", abortCount=" + abortCount + ", threadId=" + threadId + "]";
 	}
 
 }

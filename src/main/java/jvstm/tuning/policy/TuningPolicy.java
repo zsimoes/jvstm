@@ -1,16 +1,11 @@
 package jvstm.tuning.policy;
 
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import jvstm.Transaction;
 import jvstm.tuning.Controller;
 import jvstm.tuning.ThreadStatistics;
 import jvstm.tuning.Tunable;
 import jvstm.tuning.TuningContext;
 import jvstm.tuning.Util;
-import jvstm.util.Pair;
 
 public abstract class TuningPolicy
 {
@@ -20,10 +15,11 @@ public abstract class TuningPolicy
 	protected PointProvider pointProvider;
 	protected PointBinder pointBinder;
 	// the values passed to the following constructors are not used
-	protected ThreadStatistics globalTopLevelStatistics = new ThreadStatistics(-1, 0);
-	protected ThreadStatistics globalNestedStatistics = new ThreadStatistics(-1, 0);
-	protected ThreadStatistics globalStatistics = new ThreadStatistics(-1, 0);
+	protected ThreadStatistics globalTopLevelStatistics = new ThreadStatistics(-1);
+	protected ThreadStatistics globalNestedStatistics = new ThreadStatistics(-1);
+	protected ThreadStatistics globalStatistics = new ThreadStatistics(-1);
 	protected MeasurementType measurementType;
+
 	// EndRegion
 
 	public static enum MeasurementType
@@ -52,7 +48,7 @@ public abstract class TuningPolicy
 			measurementType = MeasurementType.throughput;
 			return;
 		}
-		
+
 		try
 		{
 			measurementType = MeasurementType.valueOf(measr);
@@ -115,10 +111,10 @@ public abstract class TuningPolicy
 
 		mergeStatistics();
 		long result = globalStatistics.getTransactionCount();
-		
-		if(result < 0)  {
-			result = 0;
-		}
+
+		// if(result < 0) {
+		// result = 0;
+		// }
 
 		if (resetStatistics)
 		{
@@ -149,7 +145,7 @@ public abstract class TuningPolicy
 	{
 
 		Tunable newState = newTunable();
-		ThreadStatistics stats = new ThreadStatistics(threadId, -1);
+		ThreadStatistics stats = new ThreadStatistics(threadId);
 		TuningContext ctx = new TuningContext(threadId, -1, newState, stats);
 		registerContext(ctx);
 		return ctx;

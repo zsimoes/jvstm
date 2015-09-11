@@ -1,7 +1,5 @@
 package jvstm.tuning;
 
-import jvstm.Transaction;
-
 /*
  * This class serves as a container for statistics and tunable state for each transactional thread
  */
@@ -19,7 +17,7 @@ public class TuningContext
 	{
 		registered = false;
 		this.threadId = threadId;
-		this.statistics = new ThreadStatistics(threadId, nestingLevel);
+		this.statistics = new ThreadStatistics(threadId);
 		this.threadState = new ThreadState(ThreadState.RUNNABLE);
 	}
 

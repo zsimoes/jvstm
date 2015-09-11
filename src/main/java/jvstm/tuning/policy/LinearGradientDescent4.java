@@ -1,7 +1,5 @@
 package jvstm.tuning.policy;
 
-import java.util.concurrent.atomic.AtomicInteger;
-
 import jvstm.Transaction;
 import jvstm.tuning.AdjustableSemaphore;
 import jvstm.tuning.Controller;
@@ -73,14 +71,6 @@ public class LinearGradientDescent4 extends TuningPolicy
 			pointBinder.getMidPoint();
 		}
 
-		if (topLevelSemaphore != null)
-		{
-			topLevelSemaphore.invalidate();
-		}
-		if (nestedSemaphore != null)
-		{
-			nestedSemaphore.invalidate();
-		}
 		topLevelSemaphore = new AdjustableSemaphore(config.first);
 		nestedSemaphore = new AdjustableSemaphore(config.second);
 
@@ -107,7 +97,8 @@ public class LinearGradientDescent4 extends TuningPolicy
 			TuningPoint point = Controller.getInitialConfiguration();
 			pointProvider.initRound(point);
 
-			System.err.println("# GD4 FIRST ROUND: new fixed Point is " + point);
+			// System.err.println("# GD4 FIRST ROUND: new fixed Point is " +
+			// point);
 			setCurrentPoint(point);
 			return;
 		}
@@ -115,20 +106,23 @@ public class LinearGradientDescent4 extends TuningPolicy
 		// save current point
 		float measure = getMeasurement(true);
 		pointProvider.saveCurrentPoint(measure);
-		System.err.println("# Measurement: " + measure);
+		// System.err.println("# Measurement: " + measure);
 
 		TuningPoint point = null;
 
 		if (pointProvider.isRoundEnd())
 		{
 			point = pointProvider.initRound();
-			System.err.println("# GD4 ROUND END: new fixed Point is " + point + System.lineSeparator()
-					+ "___________________________________________________");
+			/*
+			 * System.err.println("# GD4 ROUND END: new fixed Point is " + point
+			 * + System.lineSeparator() +
+			 * "___________________________________________________");
+			 */
 		} else
 		{
 			// start round with best point from previous round:
 			point = pointProvider.requestPoint(measure);
-			System.err.println("GD4 round: new Point is " + point);
+			// System.err.println("GD4 round: new Point is " + point);
 		}
 
 		setCurrentPoint(point);
@@ -172,7 +166,7 @@ public class LinearGradientDescent4 extends TuningPolicy
 	{
 		return new ThreadState(ThreadState.RUNNABLE);
 	}
-	
+
 	@Override
 	public void finishTransaction(Transaction t, boolean nested)
 	{
