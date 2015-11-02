@@ -7,12 +7,12 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import jvstm.Transaction;
+import jvstm.tuning.policy.DefaultPolicy;
+import jvstm.tuning.policy.FullGradientDescent;
+import jvstm.tuning.policy.HierarchicalGradientDescent;
+import jvstm.tuning.policy.IndependentGradientDescent;
 import jvstm.tuning.policy.LinearGradientDescent4;
 import jvstm.tuning.policy.PointBinder;
-import jvstm.tuning.policy.DefaultPolicy;
-import jvstm.tuning.policy.DiagonalGradientDescent;
-import jvstm.tuning.policy.IndependentGradientDescent;
-import jvstm.tuning.policy.InterleavedGradientDescent;
 import jvstm.tuning.policy.ThroughtputMeasurementPolicy;
 import jvstm.tuning.policy.TuningPolicy;
 
@@ -20,7 +20,7 @@ public class Controller implements Runnable
 {
 
 	// Region tuning fields
-	private TuningPolicy policy;
+	private static TuningPolicy policy;
 	private PointBinder pointBinder;
 
 	private static boolean enabled = true;
@@ -38,7 +38,7 @@ public class Controller implements Runnable
 	// Region singleton
 	private Controller()
 	{
-		String outputPath = Util.getSystemProperty("output");
+		String logFile = Util.getSystemProperty("logFile");
 		try
 		{
 			String intervalProp = Util.getSystemProperty("interval");
@@ -48,7 +48,7 @@ public class Controller implements Runnable
 			throw new RuntimeException("Invalid policy interval value. Use \"java -Dinterval=<milliseconds> ...\"");
 		}
 
-		statisticsCollector = new StatisticsCollector(outputPath, intervalMillis);
+		statisticsCollector = new StatisticsCollector(logFile, intervalMillis);
 
 		contexts = new ConcurrentHashMap<Long, TuningContext>();
 
@@ -94,6 +94,10 @@ public class Controller implements Runnable
 			{
 				initialConfig.first = Integer.parseInt(mm[0]);
 				initialConfig.second = Integer.parseInt(mm[1]);
+				if (!pointBinder.isBound(initialConfig))
+				{
+					throw new NumberFormatException("Values outside allowed range.");
+				}
 			} catch (NumberFormatException n)
 			{
 				throw new RuntimeException(
@@ -109,10 +113,9 @@ public class Controller implements Runnable
 
 		policies = new HashMap<String, Class<? extends TuningPolicy>>();
 		policies.put("LinearGD", LinearGradientDescent4.class);
-		policies.put("DiagonalGD", DiagonalGradientDescent.class);
+		policies.put("FullGD", FullGradientDescent.class);
 		policies.put("IndependentGD", IndependentGradientDescent.class);
-		policies.put("InterleavedGD", InterleavedGradientDescent.class);
-		policies.put("HierarchicalGD", null);
+		policies.put("HierarchicalGD", HierarchicalGradientDescent.class);
 		policies.put("Throughput", ThroughtputMeasurementPolicy.class);
 		policies.put("Default", DefaultPolicy.class);
 
@@ -138,6 +141,10 @@ public class Controller implements Runnable
 	public static void setEnabled(boolean isEnabled)
 	{
 		enabled = isEnabled;
+		if (isEnabled)
+		{
+			policy.resetStatistics();
+		}
 	}
 
 	private void selectPolicy()

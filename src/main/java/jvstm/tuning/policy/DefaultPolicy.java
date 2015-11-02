@@ -18,6 +18,7 @@ public class DefaultPolicy extends TuningPolicy
 	}
 
 	protected int runCount;
+	@SuppressWarnings("unused")
 	private int interval;
 
 	public AdjustableSemaphore topLevelSemaphore;
@@ -59,6 +60,7 @@ public class DefaultPolicy extends TuningPolicy
 		return new ThreadState(ThreadState.RUNNABLE);
 	}
 
+	@SuppressWarnings("static-access")
 	@Override
 	public void finishTransaction(Transaction t, boolean nested)
 	{
@@ -73,6 +75,7 @@ public class DefaultPolicy extends TuningPolicy
 		t.getTuningContext().getThreadState().setRunnable(false);
 	}
 
+	@SuppressWarnings("static-access")
 	@Override
 	public void tryRunTransaction(Transaction t, boolean nested)
 	{
@@ -84,6 +87,12 @@ public class DefaultPolicy extends TuningPolicy
 			topLevelSemaphore.acquireUninterruptibly();
 		}
 		t.getTuningContext().getThreadState().tryRun();
+	}
+
+	@Override
+	protected PointProvider createPointProvider()
+	{
+		throw new UnsupportedOperationException();
 	}
 
 }

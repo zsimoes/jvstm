@@ -115,6 +115,7 @@ public class ThroughtputMeasurementPolicy extends TuningPolicy
 		return new ThreadState(ThreadState.RUNNABLE);
 	}
 
+	@SuppressWarnings("static-access")
 	@Override
 	public void finishTransaction(Transaction t, boolean nested)
 	{
@@ -122,9 +123,16 @@ public class ThroughtputMeasurementPolicy extends TuningPolicy
 		t.getTuningContext().getThreadState().setRunnable(false);
 	}
 
+	@SuppressWarnings("static-access")
 	@Override
 	public void tryRunTransaction(Transaction t, boolean nested)
 	{
 		t.getTuningContext().getThreadState().tryRun();
+	}
+
+	@Override
+	protected PointProvider createPointProvider()
+	{
+		throw new UnsupportedOperationException();
 	}
 }

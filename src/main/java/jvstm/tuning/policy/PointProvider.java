@@ -89,6 +89,11 @@ public abstract class PointProvider
 			alternatives = new ArrayList<TuningRecord>(roundSize);
 		}
 
+		public TuningRoundInfo()
+		{
+			alternatives = new ArrayList<TuningRecord>();
+		}
+
 		@Override
 		public String toString()
 		{
@@ -143,7 +148,13 @@ public abstract class PointProvider
 	{
 		this.roundSize = roundSize;
 		this.pointBinder = pointBinder;
-		this.currentRound = new TuningRoundInfo(roundSize);
+		if (roundSize > 0)
+		{
+			this.currentRound = new TuningRoundInfo(roundSize);
+		} else
+		{
+			this.currentRound = new TuningRoundInfo();
+		}
 		this.info = new LinkedList<TuningRoundInfo>();
 		this.currentRecord = null;
 		// signal first round:
@@ -155,11 +166,7 @@ public abstract class PointProvider
 			@Override
 			public void run()
 			{
-				System.err.println("PointProvider logs: " + System.lineSeparator());
-				for (TuningRoundInfo round : info)
-				{
-					System.err.println(round.toString());
-				}
+				
 				/*
 				 * try { throughputLogFile.write(throughputBuffer.toString());
 				 * throughputLogFile.close();
@@ -170,6 +177,10 @@ public abstract class PointProvider
 				 */
 			}
 		}));
+	}
+	
+	public List<TuningRoundInfo> getRoundList() {
+		return info;
 	}
 
 	public boolean isRoundEnd()
@@ -182,6 +193,10 @@ public abstract class PointProvider
 		return (runCount == -1);
 	}
 
+	public TuningRecord getCurrentTuningRecord() {
+		return currentRecord;
+	}
+	
 	public void saveCurrentPoint(float measurement)
 	{
 		// System.err.println("PointProvider.saveCurrentPoint(measurement)");
@@ -212,14 +227,12 @@ public abstract class PointProvider
 	 */
 	public void initRound(TuningPoint point)
 	{
-		// System.err.println("PointProvider.initRound(point)");
-		// first round? set the counter right.
+		// first round? set the counter to 1.
 		if (runCount != -1)
 		{
 			incRunCount();
 		} else
 		{
-			// System.err.println("inc'ed");
 			runCount = 1;
 		}
 
@@ -242,30 +255,28 @@ public abstract class PointProvider
 		// debug
 		assert currentRecord.measurement >= 0;
 
-		TuningPoint point = selectBestPoint();
+		TuningPoint bestPoint = selectBestPoint();
 
 		TuningRoundInfo nextRound = new TuningRoundInfo(roundSize);
 		info.add(nextRound);
 		currentRound = nextRound;
 
-		currentFixedPoint = point;
-		currentRecord = new TuningRecord(point, -1);
+		currentFixedPoint = bestPoint;
+		currentRecord = new TuningRecord(bestPoint, -1);
 		currentRound.add(currentRecord);
 
-		assertValidPoint(point);
+		assertValidPoint(bestPoint);
 
-		return point;
+		return bestPoint;
 	}
 
-	private void assertValidPoint(TuningPoint point)
+	protected void assertValidPoint(TuningPoint point)
 	{
 		assert this.pointBinder.isBound(point);
 	}
 
 	public TuningPoint requestPoint(float previousPointMeasurement)
 	{
-		// System.err.println("PointProvider.requestPoint(measurement)");
-
 		currentRecord.setMeasurement(previousPointMeasurement);
 
 		Pair<Integer, TuningPoint> next = getPoint();
@@ -279,9 +290,6 @@ public abstract class PointProvider
 			{
 				throw new RuntimeException("repeated round end");
 			}
-			/*System.err.println("# PointProvider - Forced Round End (no more points avail.): new Point is "
-					+ next.second + System.lineSeparator() + "___________________________________________________");*/
-			// + ((next != null) ? ": new Point is " + next.second : "")
 		}
 
 		int retries = next.first;
@@ -300,7 +308,7 @@ public abstract class PointProvider
 	// this method provides a valid point and the number of retries needed to
 	// find it, without exceeding the round limit. I.e. if there are two points
 	// left to explore, but none of them is valid, this method returns NULL to
-	// signal a round end. 
+	// signal a round end.
 	protected Pair<Integer, TuningPoint> getPoint()
 	{
 		TuningPoint point = null;
@@ -309,7 +317,8 @@ public abstract class PointProvider
 		while (true)
 		{
 			point = doGetPoint();
-			//System.err.println("PointProvider.getPoint() iteration: " + point);
+			// System.err.println("PointProvider.getPoint() iteration: " +
+			// point);
 
 			if (pointBinder.isBound(point))
 			{
@@ -336,4 +345,6 @@ public abstract class PointProvider
 	}
 
 	protected abstract TuningPoint doGetPoint();
+
+	public abstract TuningPoint getInitialPoint();
 }

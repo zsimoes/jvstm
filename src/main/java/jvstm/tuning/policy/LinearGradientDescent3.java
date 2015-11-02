@@ -109,13 +109,14 @@ public class LinearGradientDescent3 extends TuningPolicy
 
 			if (runCount % roundSize == 0)
 			{
-				float best = GDEndRound(measurement);
+				// float best = GDEndRound(measurement);
 
 				alternativeMeasurements[runCount % roundSize] = measurement;
 				alternatives[runCount % roundSize] = current;
 
-				controller.getStatisticsCollector().recordTuningPoint(currentPoint, best, alternatives,
-						alternativeMeasurements);
+				// no longer supported:
+				// controller.getStatisticsCollector().recordTuningPoint(currentPoint,
+				// best, alternatives,alternativeMeasurements);
 				Arrays.fill(alternatives, null);
 				Arrays.fill(alternativeMeasurements, 0l);
 
@@ -152,7 +153,7 @@ public class LinearGradientDescent3 extends TuningPolicy
 	}
 
 	// used to alternate between increasing top-level and nested threads
-	private boolean incX = true;
+	// private boolean incX = true;
 
 	protected float GDEndRound(float tcr)
 	{
@@ -252,6 +253,7 @@ public class LinearGradientDescent3 extends TuningPolicy
 		return new ThreadState(ThreadState.RUNNABLE);
 	}
 
+	@SuppressWarnings("static-access")
 	@Override
 	public void finishTransaction(Transaction t, boolean nested)
 	{
@@ -268,6 +270,7 @@ public class LinearGradientDescent3 extends TuningPolicy
 		t.getTuningContext().getThreadState().setRunnable(false);
 	}
 
+	@SuppressWarnings("static-access")
 	@Override
 	public void tryRunTransaction(Transaction t, boolean nested)
 	{
@@ -281,5 +284,11 @@ public class LinearGradientDescent3 extends TuningPolicy
 			currentTopLevelThreads.incrementAndGet();
 		}
 		t.getTuningContext().getThreadState().tryRun();
+	}
+
+	@Override
+	protected PointProvider createPointProvider()
+	{
+		throw new UnsupportedOperationException();
 	}
 }

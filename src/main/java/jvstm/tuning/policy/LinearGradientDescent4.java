@@ -45,12 +45,13 @@ public class LinearGradientDescent4 extends TuningPolicy
 			incDeltaIndex();
 			return point;
 		}
+		
+		@Override
+		public TuningPoint getInitialPoint() {
+			return pointBinder.getMidPoint();
+		}
 
 	}
-
-	protected float bestTCR;
-	// protected static float tcrEpsilon = 0.01f;
-	protected static final int roundSize = 5;
 
 	protected AdjustableSemaphore topLevelSemaphore;
 	protected AdjustableSemaphore nestedSemaphore;
@@ -65,17 +66,22 @@ public class LinearGradientDescent4 extends TuningPolicy
 
 	private void init()
 	{
-		TuningPoint config = Controller.getInitialConfiguration();
-		if (config == null)
+		TuningPoint initialConfig = Controller.getInitialConfiguration();
+		if (initialConfig == null)
 		{
-			pointBinder.getMidPoint();
+			initialConfig = pointProvider.getInitialPoint();
 		}
 
-		topLevelSemaphore = new AdjustableSemaphore(config.first);
-		nestedSemaphore = new AdjustableSemaphore(config.second);
+		topLevelSemaphore = new AdjustableSemaphore(initialConfig.first);
+		nestedSemaphore = new AdjustableSemaphore(initialConfig.second);
 
-		currentPoint = new TuningPoint(config.first, config.second);
-		this.pointProvider = new LinearGDPointProvider(5, pointBinder);
+		currentPoint = new TuningPoint(initialConfig.first, initialConfig.second);
+		this.pointProvider = createPointProvider();
+	}
+	
+	@Override
+	protected PointProvider createPointProvider() {
+		return new LinearGDPointProvider(5, pointBinder);
 	}
 
 	@Override
@@ -136,9 +142,6 @@ public class LinearGradientDescent4 extends TuningPolicy
 		this.currentPoint.first = topLevel;
 		this.currentPoint.second = nested;
 
-		// this.currentTopLevelThreads.set(topLevel);
-		// this.currentNestedThreads.set(nested);
-
 		if (topLevel > previousX)
 		{
 			topLevelSemaphore.release(topLevel - previousX);
@@ -167,6 +170,7 @@ public class LinearGradientDescent4 extends TuningPolicy
 		return new ThreadState(ThreadState.RUNNABLE);
 	}
 
+	@SuppressWarnings("static-access")
 	@Override
 	public void finishTransaction(Transaction t, boolean nested)
 	{
@@ -181,6 +185,7 @@ public class LinearGradientDescent4 extends TuningPolicy
 		t.getTuningContext().getThreadState().setRunnable(false);
 	}
 
+	@SuppressWarnings("static-access")
 	@Override
 	public void tryRunTransaction(Transaction t, boolean nested)
 	{
