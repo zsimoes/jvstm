@@ -21,6 +21,10 @@ public class StatisticsCollector
 		this.tuningInterval = tuningInterval;
 		try
 		{
+			if (logFile == null)
+			{
+				throw new IOException();
+			}
 			output = new PrintWriter(logFile);
 			this.logFilePath = new File(logFile).getAbsolutePath();
 			System.err.println("Log file path: " + logFilePath);
@@ -30,8 +34,9 @@ public class StatisticsCollector
 			{
 				output.close();
 			}
-			disabled = true;
-			System.err.println("Statistics Collector Disabled (invalid file pattern: - " + logFile + ")");
+			output = new PrintWriter(System.err);
+			System.err.println("StatisticsCollector output defaulted to stderr "
+					+ (logFile == null ? "" : "(invalid file name: - " + logFile + ")"));
 		}
 
 		// ShutdownHook to flush data into the log files:
@@ -41,23 +46,27 @@ public class StatisticsCollector
 			@Override
 			public void run()
 			{
+				Controller.setEnabled(false);
+				System.err.println("Controller disabled by tuning shutdown hook");
 				List<TuningRoundInfo> info = Controller.instance().getPolicy().getPointProvider().getRoundList();
-				if (disabled)
-				{
-					// print logs to stderr:
-					System.err.println("PointProvider logs:");
-					for (TuningRoundInfo round : info)
-					{
-						System.err.println(round.toString());
-					}
-					return;
-				}
-				// else:
+				// log tuning rounds:
+				output.println();
+				output.println("PointProvider logs:");
 				for (TuningRoundInfo round : info)
 				{
 					output.println(round.toString());
 				}
+				output.println();
 
+				// log optimum distances:
+				output.println("Distance to optimum logs:");
+				List<Float> distances = Controller.instance().getPolicy().getDataStub().getDistances();
+				int i = 0;
+				for (float distance : distances)
+				{
+					output.println((i++) + "," + String.format("%.2f", distance).replace(",", "."));
+				}
+				output.println();
 				output.close();
 				System.err.println("StatisticsCollector ShutdownHook finished execution - log file: " + logFilePath);
 			}

@@ -141,6 +141,7 @@ public class Controller implements Runnable
 	public static void setEnabled(boolean isEnabled)
 	{
 		enabled = isEnabled;
+		System.err.println("Controller " + (isEnabled ? "enabled" : "disabled"));
 		if (isEnabled)
 		{
 			policy.resetStatistics();
@@ -244,7 +245,7 @@ public class Controller implements Runnable
 					policy.run(true);
 				} else
 				{
-					System.err.println("Controller disabled");
+					// System.err.println("Controller disabled");
 				}
 			} catch (InterruptedException e)
 			{

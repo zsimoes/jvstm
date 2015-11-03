@@ -7,14 +7,12 @@ import jvstm.util.Pair;
 public class HierarchicalGradientDescent extends LinearGradientDescent4
 {
 
-	// This class has the same behaviour as LinearGD, but different deltas.
-	// LinearGD only takes horizontal/vertical jumps, while this one searches in
-	// all directions
+	// HierarchicalGD
 
 	static class HierarchicalGDPointProvider extends PointProvider
 	{
 
-		protected final Delta deltaX = new Delta(1, 0);
+		protected final Delta deltaY = new Delta(0, 1);
 		protected int remainingPoints;
 		protected boolean firstRound = true;
 		// true is positive, false is negative:
@@ -43,7 +41,7 @@ public class HierarchicalGradientDescent extends LinearGradientDescent4
 		 */
 		public void initRound(TuningPoint point)
 		{
-			System.err.println("----");
+			// System.err.println("----");
 			if (firstRound)
 			{
 				firstRound = false;
@@ -59,20 +57,20 @@ public class HierarchicalGradientDescent extends LinearGradientDescent4
 			currentRecord = new TuningRecord(point, -1);
 			currentRound.add(currentRecord);
 
-			System.err.println(point.toString() + "(first)");
+			//System.err.println(point.toString() + "(first)");
 		}
 
 		public TuningPoint initRound()
 		{
-			System.err.println("----");
+			//System.err.println("----");
 			// debug
 			assert currentRecord.measurement >= 0;
 
-			// determine direction to follow: true is positive Y, false is
-			// negative Y
+			// determine direction to follow: true is positive X, false is
+			// negative X
 			if (info.size() < 2)
 			{
-				// set direction to positive Y:
+				// set direction to positive X:
 				direction = true;
 			} else
 			{
@@ -86,31 +84,31 @@ public class HierarchicalGradientDescent extends LinearGradientDescent4
 					direction = !direction;
 				}
 			}
-			int nextY;
+			int nextX;
 			if (direction == true)
 			{
-				// increment Y
-				nextY = currentFixedPoint.second + 1;
-				if (nextY > pointBinder.getMaximum())
+				// increment X
+				nextX = currentFixedPoint.first + 1;
+				if (nextX > pointBinder.getMaximum())
 				{
 					// have reached the maximum? invert
-					nextY = currentFixedPoint.second - 1;
+					nextX = currentFixedPoint.first - 1;
 					direction = false;
 				}
-				
+
 			} else
 			{
-				// decrement Y
-				nextY = currentFixedPoint.second - 1;
-				if (nextY < 1)
+				// decrement X
+				nextX = currentFixedPoint.first - 1;
+				if (nextX < 1)
 				{
 					// have reached the minimum? invert
-					nextY = currentFixedPoint.second + 1;
+					nextX = currentFixedPoint.first + 1;
 					direction = true;
 				}
 			}
 			// set X to 1
-			currentFixedPoint = new TuningPoint(1, nextY);
+			currentFixedPoint = new TuningPoint(nextX, 1);
 			remainingPoints = getScanlineMax() - 1;
 
 			TuningRoundInfo nextRound = new TuningRoundInfo();
@@ -121,7 +119,7 @@ public class HierarchicalGradientDescent extends LinearGradientDescent4
 			currentRound.add(currentRecord);
 
 			assertValidPoint(currentFixedPoint);
-			System.err.println(currentFixedPoint.toString());
+			//System.err.println(currentFixedPoint.toString());
 
 			if (isFirstRound())
 			{
@@ -133,16 +131,16 @@ public class HierarchicalGradientDescent extends LinearGradientDescent4
 
 		protected int getScanlineMax()
 		{
-			int currentY = currentFixedPoint.second;
-			// x*y < MAX ==> maxX = MAX/currentY
-			return pointBinder.getMaximum() / currentY;
+			int currentX = currentFixedPoint.first;
+			// x*y < MAX ==> maxY = MAX/currentX
+			return (int) pointBinder.getMaximum() / currentX;
 		}
 
 		@Override
 		protected Pair<Integer, TuningPoint> getPoint()
 		{
 			TuningPoint point = doGetPoint();
-			System.err.println(point.toString());
+			//System.err.println(point.toString());
 			// Hierarchical GD never tries to get a point more than once:
 			return new Pair<Integer, TuningPoint>(1, point);
 		}
@@ -153,14 +151,14 @@ public class HierarchicalGradientDescent extends LinearGradientDescent4
 			// save current record
 			if (remainingPoints <= 0)
 			{
-				throw new RuntimeException("Debug: Hierarchical GD - ramining points < 0 - should not happen.");
+				throw new RuntimeException("Debug: Hierarchical GD - remaining points < 0 - should not happen.");
 			}
 			remainingPoints--;
-			currentFixedPoint = deltaX.applyTo(currentFixedPoint);
+			currentFixedPoint = deltaY.applyTo(currentFixedPoint);
 			// is the current point out of bounds? Set x to 1
 			if (!pointBinder.isBound(currentFixedPoint))
 			{
-				currentFixedPoint.first = 1;
+				currentFixedPoint.second = 1;
 			}
 			return currentFixedPoint;
 		}

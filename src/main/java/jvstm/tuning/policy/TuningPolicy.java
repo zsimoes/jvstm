@@ -52,8 +52,12 @@ public abstract class TuningPolicy
 		clearInternalData();
 		this.controller = controller;
 	}
-	
-	public DataStub getDataStub() {
+
+	public DataStub getDataStub()
+	{
+		if(measurementType != MeasurementType.stub) {
+			throw new RuntimeException("TuningPolicy: DataStub disabled. Use \"-DMeasurementType=stub [-DLogDistances=true]\"");
+		}
 		return dataStub;
 	}
 
@@ -77,7 +81,8 @@ public abstract class TuningPolicy
 
 		if (measurementType == MeasurementType.stub)
 		{
-			dataStub = new DataStub();
+			boolean logDistances = Boolean.parseBoolean(Util.getSystemProperty("LogDistances"));
+			dataStub = new DataStub(logDistances);
 			dataStub.setup();
 		}
 
@@ -88,8 +93,21 @@ public abstract class TuningPolicy
 		protected Map<TuningPoint, Float> stubData = new HashMap<TuningPoint, Float>();
 		protected TuningPoint optimum;
 		protected boolean useFileSource = true;
-		//for logging:
+		private boolean logDistances = true;
+		// for logging:
 		protected List<Float> distances = new LinkedList<Float>();
+
+		public DataStub(boolean logDistances)
+		{
+			this.logDistances = logDistances;
+		}
+		
+		public List<Float> getDistances() {
+			if(!logDistances) {
+				throw new RuntimeException("DataStub: Distance logging disabled. Use \"-DMeasurementType=stub -DLogDistances=true\"");
+			}
+			return distances;
+		}
 
 		public float getMeasurement(TuningPoint point)
 		{
@@ -97,23 +115,34 @@ public abstract class TuningPolicy
 			if (useFileSource)
 			{
 				result = stubData.get(point);
-			} else {
+			} else
+			{
 				result = getDistanceMeasurement(point);
+				if (logDistances)
+				{
+					distances.add(getAbsoluteDistance(point));
+				}
 			}
-			distances.add(result);
 
 			return result;
 		}
 
-		protected float getDistanceMeasurement(TuningPoint point)
+		protected float getAbsoluteDistance(TuningPoint point)
 		{
-			//check cache:
-			if(stubData.containsKey(point)) {
-				return stubData.get(point);
-			}
-			
 			float distance = (float) Math.sqrt(Math.pow((point.first - optimum.first), 2)
 					+ Math.pow((point.second - optimum.second), 2));
+			return distance;
+		}
+
+		protected float getDistanceMeasurement(TuningPoint point)
+		{
+			// check cache:
+			if (stubData.containsKey(point))
+			{
+				return stubData.get(point);
+			}
+
+			float distance = getAbsoluteDistance(point);
 			float result = 1000;
 			// avoid division by zero - float are not precise, so we use a
 			// threshold of 0.01
@@ -124,8 +153,8 @@ public abstract class TuningPolicy
 			{
 				result *= 2;
 			}
-			//cache:
-			stubData.put(point,  result);
+			// cache:
+			stubData.put(point, result);
 			return result;
 		}
 
@@ -253,15 +282,15 @@ public abstract class TuningPolicy
 
 		return tcr;
 	}
-	
-	public PointProvider getPointProvider() {
+
+	public PointProvider getPointProvider()
+	{
 		return pointProvider;
 	}
 
 	public float getStubThroughput(boolean resetStatistics)
 	{
 		float result = dataStub.getMeasurement(this.getPointProvider().getCurrentTuningRecord().getPoint());
-		System.err.println("    " + result);
 		return result;
 	}
 
