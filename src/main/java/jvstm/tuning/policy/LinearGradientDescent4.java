@@ -3,6 +3,7 @@ package jvstm.tuning.policy;
 import jvstm.Transaction;
 import jvstm.tuning.AdjustableSemaphore;
 import jvstm.tuning.Controller;
+import jvstm.tuning.Parameters;
 import jvstm.tuning.ThreadState;
 import jvstm.tuning.Tunable;
 import jvstm.tuning.TuningPoint;
@@ -39,15 +40,16 @@ public class LinearGradientDescent4 extends TuningPolicy
 		}
 
 		@Override
-		public TuningPoint doGetPoint()
+		public TuningPoint getPointImpl()
 		{
 			TuningPoint point = deltas[deltaIndex].applyTo(currentFixedPoint);
 			incDeltaIndex();
 			return point;
 		}
-		
+
 		@Override
-		public TuningPoint getInitialPoint() {
+		public TuningPoint getInitialPoint()
+		{
 			return pointBinder.getMidPoint();
 		}
 
@@ -64,23 +66,25 @@ public class LinearGradientDescent4 extends TuningPolicy
 		init();
 	}
 
-	private void init()
+	protected void init()
 	{
-		TuningPoint initialConfig = Controller.getInitialConfiguration();
+		TuningPoint initialConfig = Parameters.initialConfig;
 		if (initialConfig == null)
 		{
 			initialConfig = pointProvider.getInitialPoint();
 		}
 
 		topLevelSemaphore = new AdjustableSemaphore(initialConfig.first);
-		nestedSemaphore = new AdjustableSemaphore(initialConfig.second);
+		int nested = initialConfig.first * initialConfig.second;
+		nestedSemaphore = new AdjustableSemaphore(nested);
 
-		currentPoint = new TuningPoint(initialConfig.first, initialConfig.second);
+		currentPoint = new TuningPoint(initialConfig.first, nested);
 		this.pointProvider = createPointProvider();
 	}
-	
+
 	@Override
-	protected PointProvider createPointProvider() {
+	protected PointProvider createPointProvider()
+	{
 		return new LinearGDPointProvider(5, pointBinder);
 	}
 
@@ -100,7 +104,7 @@ public class LinearGradientDescent4 extends TuningPolicy
 
 		if (pointProvider.isFirstRound())
 		{
-			TuningPoint point = Controller.getInitialConfiguration();
+			TuningPoint point = Parameters.initialConfig;
 			pointProvider.initRound(point);
 
 			// System.err.println("# GD4 FIRST ROUND: new fixed Point is " +
@@ -110,8 +114,8 @@ public class LinearGradientDescent4 extends TuningPolicy
 		}
 
 		// save current point
-		float measure = getMeasurement(true);
-		pointProvider.saveCurrentPoint(measure);
+		float throughput = getThroughput(true), tcr = getTCR(true);
+		pointProvider.saveCurrentPoint(throughput, tcr);
 		// System.err.println("# Measurement: " + measure);
 
 		TuningPoint point = null;
@@ -127,7 +131,7 @@ public class LinearGradientDescent4 extends TuningPolicy
 		} else
 		{
 			// start round with best point from previous round:
-			point = pointProvider.requestPoint(measure);
+			point = pointProvider.requestPoint(throughput, tcr);
 			// System.err.println("GD4 round: new Point is " + point);
 		}
 

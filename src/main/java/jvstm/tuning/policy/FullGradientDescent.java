@@ -38,7 +38,7 @@ public class FullGradientDescent extends LinearGradientDescent4
 		}
 
 		@Override
-		public TuningPoint doGetPoint()
+		public TuningPoint getPointImpl()
 		{
 			TuningPoint point = deltas[deltaIndex].applyTo(currentFixedPoint);
 			incDeltaIndex();

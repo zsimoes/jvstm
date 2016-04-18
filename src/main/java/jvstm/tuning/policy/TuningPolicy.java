@@ -4,6 +4,7 @@ import java.io.BufferedReader;
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -13,11 +14,11 @@ import java.util.regex.Pattern;
 
 import jvstm.Transaction;
 import jvstm.tuning.Controller;
+import jvstm.tuning.Parameters;
 import jvstm.tuning.ThreadStatistics;
 import jvstm.tuning.Tunable;
 import jvstm.tuning.TuningContext;
 import jvstm.tuning.TuningPoint;
-import jvstm.tuning.Util;
 
 public abstract class TuningPolicy
 {
@@ -37,7 +38,19 @@ public abstract class TuningPolicy
 
 	public static enum MeasurementType
 	{
-		tcr, throughput, stub
+		real, stub;
+		
+		public static List<String> names() {
+		    MeasurementType[] measures = values();
+		    List<String> names = new ArrayList<String>();
+
+		    for (int i = 0; i < measures.length; i++) {
+		        names.add(measures[i].name());
+		    }
+
+		    return names;
+		}
+		
 	}
 
 	public TuningPolicy(Controller controller)
@@ -55,56 +68,108 @@ public abstract class TuningPolicy
 
 	public DataStub getDataStub()
 	{
-		if(measurementType != MeasurementType.stub) {
-			throw new RuntimeException("TuningPolicy: DataStub disabled. Use \"-DMeasurementType=stub [-DLogDistances=true]\"");
+		if (measurementType != MeasurementType.stub)
+		{
+			throw new RuntimeException(
+					"TuningPolicy: DataStub disabled. Use \"-DMeasurementType=stub [-DLogDistances=true]\"");
 		}
 		return dataStub;
 	}
 
 	protected void setMeasurementType()
 	{
-		String measr = Util.getSystemProperty("MeasurementType");
-		if (measr == null)
-		{
-			measurementType = MeasurementType.throughput;
-			return;
-		}
-
-		try
-		{
-			measurementType = MeasurementType.valueOf(measr);
-		} catch (IllegalArgumentException i)
-		{
-			throw new RuntimeException("Invalid policy interval value: " + measr
-					+ ". Use \"java -DMeasurementType=<mType>\", where mType is one of \"tcr\" or \"throughput\"");
-		}
-
+		measurementType = Parameters.measurementType;
 		if (measurementType == MeasurementType.stub)
 		{
-			boolean logDistances = Boolean.parseBoolean(Util.getSystemProperty("LogDistances"));
-			dataStub = new DataStub(logDistances);
-			dataStub.setup();
+			dataStub = new DataStub();
 		}
-
 	}
 
 	public class DataStub
 	{
 		protected Map<TuningPoint, Float> stubData = new HashMap<TuningPoint, Float>();
 		protected TuningPoint optimum;
-		protected boolean useFileSource = true;
+		protected boolean useStubFile = true;
+		protected String stubFile;
 		private boolean logDistances = true;
-		// for logging:
+		// for caching distances:
 		protected List<Float> distances = new LinkedList<Float>();
 
-		public DataStub(boolean logDistances)
+		public DataStub()
 		{
-			this.logDistances = logDistances;
+			this.logDistances = Parameters.logDistances;
+			this.optimum = Parameters.stubOptimum;
+			this.stubFile = Parameters.stubFile;
+			this.useStubFile = Parameters.useStubFile;
+
+			// load stub data:
+			if (useStubFile)
+			{
+				// String example = "[22,1] {12120.0}";
+				// String example2 = "1 1 160000.0"
+				String pointPattern1 = "\\[(\\d+),(\\d+)\\]" + " \\{(\\d+(\\.\\d+)?)\\}";
+				String pointPattern2 = "(\\d+)\\s+(\\d+)\\s+(\\d+(\\.\\d+)?)";
+				String pointPattern3 = "\\[(\\d+),(\\d+)\\]" + " \\{thr:\\s+(\\d+(\\.\\d+)?),tcr:\\s+(\\d+(\\.\\d+)?)\\}";
+				Pattern pattern1 = Pattern.compile(pointPattern1);
+				Pattern pattern2 = Pattern.compile(pointPattern2);
+				Pattern pattern3 = Pattern.compile(pointPattern3);
+				Pattern finalPattern = null;
+				Matcher matcher = null;
+
+				BufferedReader r = null;
+				try
+				{
+					r = new BufferedReader(new FileReader(stubFile));
+					String point = null;
+
+					while ((point = r.readLine()) != null)
+					{
+						if (finalPattern == null)
+						{
+							Matcher matcher1 = pattern1.matcher(point);
+							Matcher matcher2 = pattern2.matcher(point);
+							Matcher matcher3 = pattern2.matcher(point);
+							if (matcher1.matches())
+							{
+								finalPattern = pattern1;
+							} else if (matcher2.matches())
+							{
+								finalPattern = pattern2;
+							} else if (matcher3.matches())
+							{
+								finalPattern = pattern2;
+							} else
+							{
+								r.close();
+								throw new RuntimeException("Error: Invalid Stub file data format: " + point);
+							}
+							matcher = finalPattern.matcher(point);
+						}
+						matcher = matcher.reset(point);
+						int x = Integer.parseInt(matcher.group(1));
+						int y = Integer.parseInt(matcher.group(2));
+						float measure = Float.parseFloat(matcher.group(3));
+						TuningPoint stubPoint = new TuningPoint(x, y);
+						stubData.put(stubPoint, measure);
+					}
+
+					r.close();
+				} catch (FileNotFoundException e)
+				{
+					throw new RuntimeException("Error: Invalid data source. Could not open file \"" + stubFile + "\"");
+				} catch (IOException e)
+				{
+					throw new RuntimeException("Error: Invalid data source. Could not read file \"" + stubFile + "\"");
+				}
+			}
 		}
-		
-		public List<Float> getDistances() {
-			if(!logDistances) {
-				throw new RuntimeException("DataStub: Distance logging disabled. Use \"-DMeasurementType=stub -DLogDistances=true\"");
+
+		public List<Float> getDistances()
+		{
+			if (!logDistances)
+			{
+				throw new RuntimeException(
+						"DataStub: Distance logging disabled. Use \"-DMeasurementType=stub -DLogDistances=true\"");
 			}
 			return distances;
 		}
@@ -112,7 +177,7 @@ public abstract class TuningPolicy
 		public float getMeasurement(TuningPoint point)
 		{
 			float result;
-			if (useFileSource)
+			if (useStubFile)
 			{
 				result = stubData.get(point);
 			} else
@@ -129,8 +194,8 @@ public abstract class TuningPolicy
 
 		protected float getAbsoluteDistance(TuningPoint point)
 		{
-			float distance = (float) Math.sqrt(Math.pow((point.first - optimum.first), 2)
-					+ Math.pow((point.second - optimum.second), 2));
+			float distance = (float) Math
+					.sqrt(Math.pow((point.first - optimum.first), 2) + Math.pow((point.second - optimum.second), 2));
 			return distance;
 		}
 
@@ -151,87 +216,13 @@ public abstract class TuningPolicy
 				result = result / distance;
 			} else
 			{
+				// points that coincide with the optimum will have a value of
+				// 2000, for easier reading.
 				result *= 2;
 			}
 			// cache:
 			stubData.put(point, result);
 			return result;
-		}
-
-		public void setup()
-		{
-			String source = Util.getSystemProperty("StubSource");
-			String optimum;
-			useFileSource = true;
-
-			if (source == null)
-			{
-				optimum = Util.getSystemProperty("StubOptimum");
-				if (optimum == null)
-				{
-					throw new RuntimeException(
-							"Error: to use stub data you must provide either a data source file with "
-									+ "-DStubSource=<path> or an optimum with -DStubOptimum=x,y");
-				} else
-				{
-
-					String pointPattern = "(\\d+),(\\d+)";
-					Pattern pattern = Pattern.compile(pointPattern);
-					Matcher matcher = pattern.matcher(optimum);
-					if (!matcher.matches())
-					{
-						throw new RuntimeException("Error: invalid optimum: " + optimum + ". Use -DStubOptimum=x,y");
-					}
-					this.optimum = new TuningPoint(Integer.parseInt(matcher.group(1)), Integer.parseInt(matcher
-							.group(2)));
-					useFileSource = false;
-					return;
-				}
-			}
-
-			// String test = "[22,1] {12120.0}";
-			String pointPattern = "\\[(\\d+),(\\d+)\\]" + " \\{(\\d+(\\.\\d+)?)\\}";
-			Pattern pattern = Pattern.compile(pointPattern);
-			Matcher matcher = null;
-
-			BufferedReader r = null;
-			try
-			{
-				r = new BufferedReader(new FileReader(source));
-				String point = null;
-				boolean first = true;
-
-				while ((point = r.readLine()) != null)
-				{
-					matcher = pattern.matcher(point);
-					if (!matcher.matches())
-					{
-						r.close();
-						throw new RuntimeException(
-								"Error: to use stub data you must provide a data source file with -DStubSource=<path>");
-					}
-					int x = Integer.parseInt(matcher.group(1));
-					int y = Integer.parseInt(matcher.group(2));
-					float measure = Float.parseFloat(matcher.group(3));
-					TuningPoint stubPoint = new TuningPoint(x, y);
-					if (first)
-					{
-
-					} else
-					{
-						stubData.put(stubPoint, measure);
-					}
-				}
-
-				r.close();
-			} catch (FileNotFoundException e)
-			{
-				throw new RuntimeException("Error: Invalid data source. Could not open file \"" + source + "\"");
-			} catch (IOException e)
-			{
-				throw new RuntimeException("Error: Invalid data source. Could not read file \"" + source + "\"");
-			}
-
 		}
 	}
 
@@ -246,28 +237,11 @@ public abstract class TuningPolicy
 		}
 	}
 
-	public float getMeasurement(boolean resetStatistics)
-	{
-		if (measurementType == MeasurementType.throughput)
-		{
-			return getThroughput(resetStatistics);
-		} else if (measurementType == MeasurementType.tcr)
-		{
-			return getTCR(resetStatistics);
-		} else if (measurementType == MeasurementType.stub)
-		{
-			return getStubThroughput(resetStatistics);
-		} else
-		{
-			// default
-			return getThroughput(resetStatistics);
-		}
-	}
-
 	// Transaction Commit Rate (TCR), the percentage of committed transactions
 	// out of all executed transactions in a sample period
 	public float getTCR(boolean resetStatistics)
 	{
+		mergeStatistics();
 		float tcr = ((float) globalStatistics.getCommitCount()) / globalStatistics.getTransactionCount();
 
 		if (Float.isNaN(tcr))

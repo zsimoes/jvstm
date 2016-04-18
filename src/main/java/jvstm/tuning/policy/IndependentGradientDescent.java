@@ -15,7 +15,7 @@ public class IndependentGradientDescent extends LinearGradientDescent4 {
 		}
 
 		@Override
-		protected TuningPoint doGetPoint()
+		protected TuningPoint getPointImpl()
 		{
 			// TODO Auto-generated method stub
 			return null;

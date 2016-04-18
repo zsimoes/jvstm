@@ -12,7 +12,8 @@ public abstract class PointProvider
 	public static class TuningRecord
 	{
 		protected TuningPoint point;
-		protected float measurement;
+		protected float throughput;
+		protected float tcr;
 
 		public TuningPoint getPoint()
 		{
@@ -24,26 +25,45 @@ public abstract class PointProvider
 			this.point = point;
 		}
 
-		public float getMeasurement()
+		public float getThroughput()
 		{
-			return measurement;
+			return throughput;
 		}
 
-		public void setMeasurement(float measurement)
+		public void setThroughput(float throughput)
 		{
-			this.measurement = measurement;
+			this.throughput = throughput;
+		}
+		
+		public float getTcr()
+		{
+			return tcr;
 		}
 
-		public TuningRecord(TuningPoint point, float measurement)
+		public void setTcr(float tcr)
+		{
+			this.tcr = tcr;
+		}
+
+		public TuningRecord(TuningPoint point, float throughput, float tcr)
 		{
 			this.point = point;
-			this.measurement = measurement;
+			this.throughput = throughput;
+			this.tcr = tcr;
 		}
 
-		@Override
+		public String toStringThroughput()
+		{
+			return point.toString() + " {" + String.format("%.2f", throughput) + "}";
+		}
+		public String toStringTCR()
+		{
+			return point.toString() + " {" + String.format("%.2f", tcr) + "}";
+		}
+		
 		public String toString()
 		{
-			return point.toString() + " {" + measurement + "}";
+			return point.toString() + " {" + "thr: " + String.format("%.2f", throughput) + ",tcr: " + String.format("%.2f", tcr) + "}";
 		}
 	}
 
@@ -61,7 +81,7 @@ public abstract class PointProvider
 		{
 			if (best == null)
 			{
-				return new TuningRecord(null, Float.MIN_VALUE);
+				return new TuningRecord(null, Float.MIN_VALUE, Float.MIN_VALUE);
 			}
 			return best;
 		}
@@ -78,7 +98,7 @@ public abstract class PointProvider
 			if (best == null)
 			{
 				best = record;
-			} else if (record.measurement > best.measurement)
+			} else if (record.throughput > best.throughput)
 			{
 				best = record;
 			}
@@ -102,10 +122,10 @@ public abstract class PointProvider
 			{
 				if (rec != null)
 				{
-					sb.append(rec.toString() + " , ");
+					sb.append(rec.toStringThroughput() + " , ");
 				}
 			}
-			return "BestPoint - " + best + "  - alts - " + sb.toString();
+			return "BestPoint - " + best.toStringThroughput() + "  - Alts - " + sb.toString();
 		}
 	}
 
@@ -159,24 +179,6 @@ public abstract class PointProvider
 		this.currentRecord = null;
 		// signal first round:
 		runCount = -1;
-
-		Runtime.getRuntime().addShutdownHook(new Thread(new Runnable()
-		{
-
-			@Override
-			public void run()
-			{
-				
-				/*
-				 * try { throughputLogFile.write(throughputBuffer.toString());
-				 * throughputLogFile.close();
-				 * tuningPathFile.write(tuningBuffer.toString());
-				 * tuningPathFile.close(); System.err.println(
-				 * "StatisticsCollector ShutdownHook finished execution."); }
-				 * catch (IOException e) { e.printStackTrace(); }
-				 */
-			}
-		}));
 	}
 	
 	public List<TuningRoundInfo> getRoundList() {
@@ -197,11 +199,12 @@ public abstract class PointProvider
 		return currentRecord;
 	}
 	
-	public void saveCurrentPoint(float measurement)
+	public void saveCurrentPoint(float throughput, float tcr)
 	{
 		// System.err.println("PointProvider.saveCurrentPoint(measurement)");
-		currentRecord.measurement = measurement;
-		if (measurement > currentRound.getBest().getMeasurement())
+		currentRecord.throughput = throughput;
+		currentRecord.tcr = tcr;
+		if (throughput > currentRound.getBest().getThroughput())
 		{
 			currentRound.setBest(currentRecord);
 			// System.err.println("Replaced best record: " + currentRecord);
@@ -223,7 +226,8 @@ public abstract class PointProvider
 	}
 
 	/*
-	 * Start a round with a preselected point.
+	 * Start a round with a preselected point. 
+	 * JVSTM's tuning "init" (i.e. the first round) round should use this method, possibly with an preset initial configuration.
 	 */
 	public void initRound(TuningPoint point)
 	{
@@ -243,17 +247,20 @@ public abstract class PointProvider
 		TuningRoundInfo nextRound = new TuningRoundInfo(roundSize);
 		info.add(nextRound);
 
-		currentRecord = new TuningRecord(point, -1);
+		currentRecord = new TuningRecord(point, -1, -1);
 		nextRound.add(currentRecord);
 	}
 
+	/*
+	 * Start a round: use the previous round's best point as a starting point.
+	 */
 	public TuningPoint initRound()
 	{
 		// System.err.println("PointProvider.initRound()");
 		incRunCount();
 
 		// debug
-		assert currentRecord.measurement >= 0;
+		assert currentRecord.throughput >= 0;
 
 		TuningPoint bestPoint = selectBestPoint();
 
@@ -262,7 +269,7 @@ public abstract class PointProvider
 		currentRound = nextRound;
 
 		currentFixedPoint = bestPoint;
-		currentRecord = new TuningRecord(bestPoint, -1);
+		currentRecord = new TuningRecord(bestPoint, -1, -1);
 		currentRound.add(currentRecord);
 
 		assertValidPoint(bestPoint);
@@ -275,10 +282,12 @@ public abstract class PointProvider
 		assert this.pointBinder.isBound(point);
 	}
 
-	public TuningPoint requestPoint(float previousPointMeasurement)
+	public TuningPoint requestPoint(float previousThroughput, float previousTCR)
 	{
-		currentRecord.setMeasurement(previousPointMeasurement);
+		currentRecord.setThroughput(previousThroughput);
+		currentRecord.setTcr(previousTCR);
 
+		// <retries, Point>
 		Pair<Integer, TuningPoint> next = getPoint();
 
 		if (next == null)
@@ -288,7 +297,7 @@ public abstract class PointProvider
 			// next = getPoint();
 			if (next.second == null)
 			{
-				throw new RuntimeException("repeated round end");
+				throw new RuntimeException("repeated round end - shouldn't happen");
 			}
 		}
 
@@ -299,35 +308,35 @@ public abstract class PointProvider
 		TuningPoint point = next.second;
 		assertValidPoint(point);
 
-		currentRecord = new TuningRecord(point, -1);
+		currentRecord = new TuningRecord(point, -1, -1);
 		currentRound.add(currentRecord);
 
 		return point;
 	}
 
 	// this method provides a valid point and the number of retries needed to
-	// find it, without exceeding the round limit. I.e. if there are two points
-	// left to explore, but none of them is valid, this method returns NULL to
-	// signal a round end.
+	// find it, without exceeding the round limit, or null if there are no valid points left this round.
 	protected Pair<Integer, TuningPoint> getPoint()
 	{
 		TuningPoint point = null;
 		int tries = 1;
 
+		//try to find a valid point left in this round:
 		while (true)
 		{
-			point = doGetPoint();
+			point = getPointImpl();
 			// System.err.println("PointProvider.getPoint() iteration: " +
 			// point);
 
 			if (pointBinder.isBound(point))
 			{
+				//valid point found
 				break;
 			}
 
 			if (tries + runCount >= roundSize)
 			{
-				// signal round end;
+				// signal round end - no valid points found.
 				return null;
 			}
 
@@ -344,7 +353,7 @@ public abstract class PointProvider
 		return currentRound.getBest().getPoint();
 	}
 
-	protected abstract TuningPoint doGetPoint();
+	protected abstract TuningPoint getPointImpl();
 
 	public abstract TuningPoint getInitialPoint();
 }

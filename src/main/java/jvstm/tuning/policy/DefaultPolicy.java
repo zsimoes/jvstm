@@ -1,8 +1,8 @@
 package jvstm.tuning.policy;
 
 import jvstm.Transaction;
-import jvstm.tuning.AdjustableSemaphore;
 import jvstm.tuning.Controller;
+import jvstm.tuning.Parameters;
 import jvstm.tuning.ThreadState;
 import jvstm.tuning.Tunable;
 
@@ -13,23 +13,15 @@ public class DefaultPolicy extends TuningPolicy
 	{
 		super(controller);
 		init();
-		pointBinder.setMaximum(48);
+		pointBinder.setMaximum(Parameters.maxThreads);
 		// TODO Auto-generated constructor stub
 	}
 
 	protected int runCount;
-	@SuppressWarnings("unused")
-	private int interval;
-
-	public AdjustableSemaphore topLevelSemaphore;
-	public AdjustableSemaphore nestedSemaphore;
 
 	private void init()
 	{
 		resetData();
-
-		topLevelSemaphore = new AdjustableSemaphore(Integer.MAX_VALUE);
-		nestedSemaphore = new AdjustableSemaphore(Integer.MAX_VALUE);
 	}
 
 	@Override
@@ -47,10 +39,6 @@ public class DefaultPolicy extends TuningPolicy
 	@Override
 	public void run(boolean mergePerThreadStatistics)
 	{
-		// //System.err.println("\tPOLC - Waiting: " +
-		// topLevelSemaphore.getQueueLength() + " , "
-		// + nestedSemaphore.getQueueLength() + "(available: " +
-		// nestedSemaphore.availablePermits() + ")");
 		runCount++;
 	}
 
@@ -60,33 +48,16 @@ public class DefaultPolicy extends TuningPolicy
 		return new ThreadState(ThreadState.RUNNABLE);
 	}
 
-	@SuppressWarnings("static-access")
 	@Override
 	public void finishTransaction(Transaction t, boolean nested)
 	{
-		if (nested)
-		{
-			nestedSemaphore.release();
-		} else
-		{
-			topLevelSemaphore.release();
-		}
-		t.getTuningContext().getThreadState().finish();
-		t.getTuningContext().getThreadState().setRunnable(false);
+		//nothing
 	}
 
-	@SuppressWarnings("static-access")
 	@Override
 	public void tryRunTransaction(Transaction t, boolean nested)
 	{
-		if (nested)
-		{
-			nestedSemaphore.acquireUninterruptibly();
-		} else
-		{
-			topLevelSemaphore.acquireUninterruptibly();
-		}
-		t.getTuningContext().getThreadState().tryRun();
+		//nothing
 	}
 
 	@Override

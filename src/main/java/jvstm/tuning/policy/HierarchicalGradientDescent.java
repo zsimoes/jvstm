@@ -54,7 +54,7 @@ public class HierarchicalGradientDescent extends LinearGradientDescent4
 			currentRound = new TuningRoundInfo();
 			info.add(currentRound);
 
-			currentRecord = new TuningRecord(point, -1);
+			currentRecord = new TuningRecord(point, -1, -1);
 			currentRound.add(currentRecord);
 
 			//System.err.println(point.toString() + "(first)");
@@ -64,7 +64,7 @@ public class HierarchicalGradientDescent extends LinearGradientDescent4
 		{
 			//System.err.println("----");
 			// debug
-			assert currentRecord.measurement >= 0;
+			assert currentRecord.throughput >= 0;
 
 			// determine direction to follow: true is positive X, false is
 			// negative X
@@ -75,8 +75,8 @@ public class HierarchicalGradientDescent extends LinearGradientDescent4
 			} else
 			{
 				TuningRoundInfo previousRound = info.get(info.size() - 2);
-				float previousBestMeasure = previousRound.getBest().measurement;
-				float currentBestMeasure = currentRound.getBest().measurement;
+				float previousBestMeasure = previousRound.getBest().throughput;
+				float currentBestMeasure = currentRound.getBest().throughput;
 				// determine current direction:
 				// if this direction lead to a worse measurement invert it:
 				if (currentBestMeasure < previousBestMeasure)
@@ -115,7 +115,7 @@ public class HierarchicalGradientDescent extends LinearGradientDescent4
 			info.add(nextRound);
 			currentRound = nextRound;
 
-			currentRecord = new TuningRecord(currentFixedPoint, -1);
+			currentRecord = new TuningRecord(currentFixedPoint, -1, -1);
 			currentRound.add(currentRecord);
 
 			assertValidPoint(currentFixedPoint);
@@ -139,14 +139,14 @@ public class HierarchicalGradientDescent extends LinearGradientDescent4
 		@Override
 		protected Pair<Integer, TuningPoint> getPoint()
 		{
-			TuningPoint point = doGetPoint();
+			TuningPoint point = getPointImpl();
 			//System.err.println(point.toString());
 			// Hierarchical GD never tries to get a point more than once:
 			return new Pair<Integer, TuningPoint>(1, point);
 		}
 
 		@Override
-		public TuningPoint doGetPoint()
+		public TuningPoint getPointImpl()
 		{
 			// save current record
 			if (remainingPoints <= 0)

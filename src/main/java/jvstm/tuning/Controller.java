@@ -1,19 +1,12 @@
 package jvstm.tuning;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 import jvstm.Transaction;
-import jvstm.tuning.policy.DefaultPolicy;
-import jvstm.tuning.policy.FullGradientDescent;
-import jvstm.tuning.policy.HierarchicalGradientDescent;
-import jvstm.tuning.policy.IndependentGradientDescent;
-import jvstm.tuning.policy.LinearGradientDescent4;
 import jvstm.tuning.policy.PointBinder;
-import jvstm.tuning.policy.ThroughtputMeasurementPolicy;
 import jvstm.tuning.policy.TuningPolicy;
 
 public class Controller implements Runnable
@@ -28,31 +21,23 @@ public class Controller implements Runnable
 	protected Map<Long, TuningContext> contexts;
 	public Set<Transaction> started;
 
-	private final int intervalMillis;
 	private StatisticsCollector statisticsCollector;
-	private static Map<String, Class<? extends TuningPolicy>> policies;
-	private static TuningPoint initialConfig = new TuningPoint();
 
 	// EndRegion
+	static
+	{
+		Parameters.setup();
+	}
 
 	// Region singleton
 	private Controller()
 	{
-		String logFile = Util.getSystemProperty("logFile");
-		try
-		{
-			String intervalProp = Util.getSystemProperty("interval");
-			intervalMillis = Integer.parseInt(intervalProp);
-		} catch (Exception e)
-		{
-			throw new RuntimeException("Invalid policy interval value. Use \"java -Dinterval=<milliseconds> ...\"");
-		}
 
-		statisticsCollector = new StatisticsCollector(logFile, intervalMillis);
+		statisticsCollector = new StatisticsCollector();
 
 		contexts = new ConcurrentHashMap<Long, TuningContext>();
 
-		// TODO - possible problem that leads to sempahores leaking permits.
+		// TODO - possible problem that leads to semaphores leaking permits.
 		// From the Java documentation:
 		// (in using newSetFromMap(ConcurrentHashMap)) "read access is fully
 		// concurrent
@@ -62,70 +47,13 @@ public class Controller implements Runnable
 		// may lead to replays (re-start()s). Test this.
 		started = Collections.newSetFromMap(new ConcurrentHashMap<Transaction, Boolean>());
 
-		String m = Util.getSystemProperty("maxThreads");
-		if (m == null)
+		this.pointBinder = new PointBinder(Parameters.maxThreads);
+		if (!pointBinder.isBound(Parameters.initialConfig))
 		{
-			throw new RuntimeException("Invalid maxThreads value. Use \"java -DmaxThreads=<max_threads> ...\"");
-		}
-		int maxThreads;
-		try
-		{
-			maxThreads = Integer.parseInt(m);
-		} catch (NumberFormatException n)
-		{
-			throw new RuntimeException("Invalid maxThreads value. Use \"java -DmaxThreads=<max_threads> ...\"");
-		}
-
-		this.pointBinder = new PointBinder(maxThreads);
-
-		m = Util.getSystemProperty("initialConfig");
-		if (m == null)
-		{
-			initialConfig = null;
-		} else
-		{
-			String[] mm = m.split(",");
-			if (mm.length != 2)
-			{
-				throw new RuntimeException(
-						"Invalid initialConfig value. Use \"java -DinitialConfig=<max_topLevel>,<max_nested> ...\"");
-			}
-			try
-			{
-				initialConfig.first = Integer.parseInt(mm[0]);
-				initialConfig.second = Integer.parseInt(mm[1]);
-				if (!pointBinder.isBound(initialConfig))
-				{
-					throw new NumberFormatException("Values outside allowed range.");
-				}
-			} catch (NumberFormatException n)
-			{
-				throw new RuntimeException(
-						"Invalid initialConfig value. Use \"java -DinitialConfig=<max_topLevel>,<max_nested> ...\"");
-			}
+			Parameters.printUsageAndExit("Initial Config outside allowed range for MaxThreads: " + Parameters.initialConfig);
 		}
 
 		selectPolicy();
-	}
-
-	static
-	{
-
-		policies = new HashMap<String, Class<? extends TuningPolicy>>();
-		policies.put("LinearGD", LinearGradientDescent4.class);
-		policies.put("FullGD", FullGradientDescent.class);
-		policies.put("IndependentGD", IndependentGradientDescent.class);
-		policies.put("HierarchicalGD", HierarchicalGradientDescent.class);
-		policies.put("Throughput", ThroughtputMeasurementPolicy.class);
-		policies.put("Default", DefaultPolicy.class);
-
-		// tuningMechanisms = new HashMap<String, Class<? extends
-		// TuningPolicy>>();
-
-		// tuningMechanisms.put("Semaphore", LinearGradientDescent3.class);
-		// tuningMechanisms.put("WaitingQueue", LinearGradientDescent2.class);
-		// tuningMechanisms.put("ProducerConsumer",
-		// LinearGradientDescent.class);
 	}
 
 	public StatisticsCollector getStatisticsCollector()
@@ -141,7 +69,16 @@ public class Controller implements Runnable
 	public static void setEnabled(boolean isEnabled)
 	{
 		enabled = isEnabled;
-		System.err.println("Controller " + (isEnabled ? "enabled" : "disabled"));
+		if (isEnabled)
+		{
+			policy.resetStatistics();
+		}
+	}
+	
+	public static void setEnabled(boolean isEnabled, String source)
+	{
+		enabled = isEnabled;
+		System.err.println("Controller " + (isEnabled ? "enabled" : "disabled") + " by " + source);
 		if (isEnabled)
 		{
 			policy.resetStatistics();
@@ -152,32 +89,9 @@ public class Controller implements Runnable
 	{
 		try
 		{
-
-			String pol = Util.getSystemProperty("policy");
-			if (pol == null)
-			{
-				System.err.println("Policy System Property not found - defaulting to LinearGD.");
-				policy = new LinearGradientDescent4(this);
-				return;
-			}
-
-			Class<? extends TuningPolicy> c = policies.get(pol);
-			if (c == null)
-			{
-				throw new RuntimeException("jvstm.tuning.Controller (init) - Invalid Policy: " + pol + "."
-						+ System.lineSeparator() + "Available policies are: " + policies.keySet());
-			}
-
-			if (pol.equals("Throughput"))
-			{
-				// special case for thoghput measurement policy
-				policy = c.getConstructor(Controller.class).newInstance(this, this.intervalMillis);
-			} else
-			{
-				policy = c.getConstructor(Controller.class).newInstance(this);
-			}
+			Class<? extends TuningPolicy> c = Parameters.policy;
+			policy = c.getConstructor(Controller.class).newInstance(this);
 			System.err.println("Selected tuning policy: " + policy.getClass().getName());
-
 		} catch (Exception e)
 		{
 			System.err.println("Exception selecting policy: " + e.getMessage());
@@ -239,7 +153,7 @@ public class Controller implements Runnable
 		{
 			try
 			{
-				Thread.sleep(intervalMillis);
+				Thread.sleep(Parameters.interval);
 				if (enabled)
 				{
 					policy.run(true);
@@ -284,11 +198,6 @@ public class Controller implements Runnable
 	public Map<Long, TuningContext> getContexts()
 	{
 		return contexts;
-	}
-
-	public static TuningPoint getInitialConfiguration()
-	{
-		return initialConfig;
 	}
 
 	// EndRegion

@@ -6,10 +6,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 import jvstm.Transaction;
 import jvstm.tuning.AdjustableSemaphore;
 import jvstm.tuning.Controller;
+import jvstm.tuning.Parameters;
 import jvstm.tuning.ThreadState;
 import jvstm.tuning.Tunable;
 import jvstm.util.Pair;
 
+@Deprecated
 public class LinearGradientDescent3 extends TuningPolicy
 {
 
@@ -58,7 +60,7 @@ public class LinearGradientDescent3 extends TuningPolicy
 
 	private void init()
 	{
-		Pair<Integer, Integer> config = Controller.getInitialConfiguration();
+		Pair<Integer, Integer> config = Parameters.initialConfig;
 		if (config == null)
 		{
 			pointBinder.getMidPoint();
@@ -142,7 +144,7 @@ public class LinearGradientDescent3 extends TuningPolicy
 
 	protected float GDSaveMeasurement()
 	{
-		float tcr = getMeasurement(true);
+		float tcr = getTCR(true);
 		if (tcr > bestTCR)
 		{
 			setBestPoint(currentPoint.first, currentPoint.second);
