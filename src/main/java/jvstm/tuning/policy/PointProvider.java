@@ -244,7 +244,7 @@ public abstract class PointProvider
 
 		currentFixedPoint = point;
 
-		TuningRoundInfo nextRound = new TuningRoundInfo(roundSize);
+		TuningRoundInfo nextRound = new TuningRoundInfo();
 		info.add(nextRound);
 
 		currentRecord = new TuningRecord(point, -1, -1);
@@ -282,10 +282,9 @@ public abstract class PointProvider
 		assert this.pointBinder.isBound(point);
 	}
 
-	public TuningPoint requestPoint(float previousThroughput, float previousTCR)
+	public TuningPoint getPoint(float previousThroughput, float previousTCR)
 	{
-		currentRecord.setThroughput(previousThroughput);
-		currentRecord.setTcr(previousTCR);
+		saveCurrentPoint(previousThroughput, previousTCR);
 
 		// <retries, Point>
 		Pair<Integer, TuningPoint> next = getPoint();

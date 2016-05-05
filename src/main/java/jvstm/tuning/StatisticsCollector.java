@@ -93,7 +93,9 @@ public class StatisticsCollector
 				if (policy.getPointProvider() == null || policy.getPointProvider().getRoundList() == null)
 				{
 					return;
-				}
+				} 
+				
+				List<TuningRoundInfo> info = policy.getPointProvider().getRoundList();
 				/*
 				 * Log Header
 				 */
@@ -106,10 +108,24 @@ public class StatisticsCollector
 				output.println("Timestamp: " + d.toString() + " (" + d.getTime() + ")");
 				output.println();
 				
+				double throughputSum = 0f;
 				Pattern executionTimePattern = Pattern.compile("(\\d+)\\s*");
 				Matcher m = executionTimePattern.matcher(interceptedOutput);
 				if(m.matches()) {
 					output.println("ExecutionTime: " + m.group(1));
+					float execSeconds = Integer.parseInt(m.group(1).trim()) / 1000f;
+					for (TuningRoundInfo round : info)
+					{
+						for (TuningRecord record : round.getAlternatives())
+						{
+							throughputSum += record.getThroughput();
+						}
+
+					}
+					output.println("TotalThroughput: " + throughputSum);
+					throughputSum /= execSeconds;
+					output.println(String.format("AverageThroughput: %.2f ops/s", throughputSum));
+					
 					System.err.println("Execution time from intercepted output saved to JVSTM log.");
 				} else {
 					System.err.println("output does not match expected format (execution time only) - not saved to log.");
@@ -118,7 +134,6 @@ public class StatisticsCollector
 				/*
 				 * 1. Get Tuning Rounds from the current policy.
 				 */
-				List<TuningRoundInfo> info = policy.getPointProvider().getRoundList();
 				output.println();
 				output.println(headerTuningRoundLogs);
 				for (TuningRoundInfo round : info)
@@ -188,8 +203,8 @@ public class StatisticsCollector
 
 					}
 					output.println();
-					output.println("## ");
 				}
+				output.println("## ");
 				output.close();
 				System.err.println("StatisticsCollector ShutdownHook finished execution - log file: " + logFile);
 				Controller.setEnabled(true, "StatisticsCollector ShutdownHook");

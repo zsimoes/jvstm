@@ -7,10 +7,12 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import jvstm.tuning.policy.DefaultPolicy;
+import jvstm.tuning.policy.F2C2;
 import jvstm.tuning.policy.FakeLinearGradientDescent;
 import jvstm.tuning.policy.FullGradientDescent;
 import jvstm.tuning.policy.HierarchicalGradientDescent;
 import jvstm.tuning.policy.LinearGradientDescent4;
+import jvstm.tuning.policy.RRS;
 import jvstm.tuning.policy.TuningPolicy;
 import jvstm.tuning.policy.TuningPolicy.MeasurementType;
 
@@ -117,6 +119,8 @@ public final class Parameters
 		policies.put("FullGD", FullGradientDescent.class);
 		policies.put("HierarchicalGD", HierarchicalGradientDescent.class);
 		policies.put("FakeLinearGD", FakeLinearGradientDescent.class);
+		policies.put("RRS", RRS.class);
+		policies.put("F2C2", F2C2.class);
 	}
 
 	public static void setup()
